@@ -5,12 +5,12 @@ from typing import Literal
 from dotenv import load_dotenv
 from tools import get_rag_tool
 from utils import build_vector_store
-from state import MessagesState
-from nodes import make_llm_call, make_tool_node
+from state import ExtendedState
+from nodes import make_llm_call, make_tool_node, make_extract_bugs
 from IPython.display import Image, display
 
 
-def should_continue(state: MessagesState) -> Literal["tool_node", END]:
+def should_continue(state: ExtendedState) -> Literal["tool_node", "extract_bugs"]:
     """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
 
     messages = state["messages"]
@@ -20,15 +20,15 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:
     if last_message.tool_calls:
         return "tool_node"
 
-    # Otherwise, we stop (reply to the user)
-    return END
+    # Otherwise, extract structured bugs
+    return "extract_bugs"
 
+
+load_dotenv("../../")
 
 print("Build vector store")
 # For testing
 build_vector_store("../../buggy_code")
-
-load_dotenv()
 tool = get_rag_tool()
 
 model = init_chat_model(
@@ -38,20 +38,23 @@ model_with_tools = model.bind_tools([tool])
 
 llm_call = make_llm_call(model_with_tools)
 tool_node = make_tool_node([tool])
+extract_bugs = make_extract_bugs(model)
 
 print("Initialize agent")
-agent_builder = StateGraph(MessagesState)
+agent_builder = StateGraph(ExtendedState)
 
 agent_builder.add_node("llm_call", llm_call)
 agent_builder.add_node("tool_node", tool_node)
+agent_builder.add_node("extract_bugs", extract_bugs)
 
 agent_builder.add_edge(START, "llm_call")
 agent_builder.add_conditional_edges(
     "llm_call",
     should_continue,
-    ["tool_node", END]
+    ["tool_node", "extract_bugs"]
 )
 agent_builder.add_edge("tool_node", "llm_call")
+agent_builder.add_edge("extract_bugs", END)
 
 print("Compiling agent")
 agent = agent_builder.compile()

@@ -1,4 +1,15 @@
 from langchain.messages import SystemMessage, ToolMessage
+from langchain_core.messages import SystemMessage
+from pydantic import BaseModel
+
+
+class Bug(BaseModel):
+    file: str
+    description: str
+    line_number: int | None = None
+    suggested_fix: str
+class BugReport(BaseModel):
+    bugs: list[Bug]
 
 
 def make_llm_call(model):
@@ -35,3 +46,27 @@ def make_tool_node(tools):
             result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
         return {"messages": result}
     return tool_node
+
+
+def make_extract_bugs(model):
+    """Returns an extract_bugs node that produces a structured BugReport."""
+    structured_model = model.with_structured_output(BugReport)
+
+    def extract_bugs(state: dict):
+        """Extracts structured bug report from the conversation history."""
+        response = structured_model.invoke(
+            [
+                SystemMessage(
+                    content=(
+                        "Based on the conversation so far, extract all bugs found in the codebase. "
+                        "For each bug, provide the file name, a description, the line number if known, "
+                        "and a suggested fix."
+                    )
+                )
+            ]
+            + state["messages"]
+        )
+        return {"bugs_found": response.bugs}
+
+    return extract_bugs
+

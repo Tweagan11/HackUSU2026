@@ -19,6 +19,7 @@ LANGUAGE_MAP = {
 }
 
 load_dotenv()
+
 def load_documents_for_extension(codebase_path: str, extension: str, parser_lang: str):
     loader = GenericLoader.from_filesystem(
         codebase_path,
@@ -55,7 +56,6 @@ def build_vector_store(codebase_path: str, persist_directory: str = "./chroma_db
         print(f"  → {len(chunks)} chunks")
 
     print(f"\nTotal chunks: {len(all_chunks)}")
-
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     vector_store = Chroma.from_documents(
         documents=all_chunks,

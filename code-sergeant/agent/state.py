@@ -11,4 +11,4 @@ class MessagesState(TypedDict):
     llm_calls: int
 
 class ExtendedState(MessagesState):
-    
+    bugs_found: list
