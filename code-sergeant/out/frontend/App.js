@@ -91,7 +91,7 @@ const App = () => {
     const editorLanguage = readEditorLanguage();
     const [state, dispatch] = (0, react_1.useReducer)(reducer_1.appReducer, {
         ...(persistedState?.appState ?? reducer_1.initialState),
-        code: persistedState?.appState.code ?? config_1.SAMPLE_CODE,
+        code: persistedState?.appState.code ?? '',
         punishmentProgress: persistedState?.appState.punishmentProgress ?? 0,
     });
     const [effects, setEffects] = (0, react_1.useState)({
@@ -104,6 +104,12 @@ const App = () => {
     const previousUiStateRef = (0, react_1.useRef)(state.uiState);
     /** True when running outside VS Code webview (standalone browser dev) */
     const isDevMode = !(0, bridge_1.getVSCodeApi)();
+    // --- Dev mode: load sample code when no backend is available ---
+    (0, react_1.useEffect)(() => {
+        if (isDevMode && !state.code) {
+            dispatch({ type: 'CHALLENGE_LOADED', code: config_1.SAMPLE_CODE, language: 'javascript', instructions: 'Fix the null pointer bug so getUserName handles null values safely.' });
+        }
+    }, [isDevMode, state.code]);
     // --- Boot sequence: auto-transition to IDLE after delay ---
     (0, react_1.useEffect)(() => {
         const timer = setTimeout(() => dispatch({ type: 'BOOT_COMPLETE' }), config_1.BOOT_DURATION_MS);
@@ -117,7 +123,12 @@ const App = () => {
         return () => clearTimeout(timer);
     }, [state.uiState]);
     // --- Listen for messages from the VS Code extension host ---
-    (0, react_1.useEffect)(() => (0, bridge_1.createMessageListener)(dispatch), []);
+    (0, react_1.useEffect)(() => {
+        const cleanup = (0, bridge_1.createMessageListener)(dispatch);
+        // Tell the extension we're ready to receive data (e.g. challenge)
+        (0, bridge_1.notifyReady)();
+        return cleanup;
+    }, []);
     // --- Persist snapshot to webview and extension host for restore after close ---
     (0, react_1.useEffect)(() => {
         const api = (0, bridge_1.getVSCodeApi)();
@@ -234,6 +245,8 @@ const App = () => {
     // --- Derived state ---
     const mood = MOOD_MAP[state.uiState];
     const isEditorReadOnly = state.uiState !== 'IDLE';
+    // Use the language from the agent's challenge, fall back to editor language
+    const resolvedLanguage = state.challengeLanguage || editorLanguage;
     const rootClasses = [
         'app-root',
         effects.shake ? 'effects--shake' : '',
@@ -241,7 +254,7 @@ const App = () => {
     ]
         .filter(Boolean)
         .join(' ');
-    return ((0, jsx_runtime_1.jsxs)("div", { className: rootClasses, children: [state.uiState === 'BOOTING' && (0, jsx_runtime_1.jsx)(BootScreen_1.default, {}), state.uiState === 'TRAINING_SPLASH' && (0, jsx_runtime_1.jsx)(TrainingSplash_1.default, {}), state.uiState !== 'BOOTING' && state.uiState !== 'TRAINING_SPLASH' && ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(TopBar_1.default, { uiState: state.uiState, mood: mood, timeLeftSec: timeLeftSec }), (0, jsx_runtime_1.jsx)(MissionLayout_1.default, { code: state.code, onCodeChange: handleCodeChange, editorLanguage: editorLanguage, readOnly: isEditorReadOnly, uiState: state.uiState, dialogueLog: state.dialogueLog, punishment: state.punishment, punishmentProgress: state.punishmentProgress, showPunishment: state.uiState === 'RESULT_FAIL', onPunishmentLineCompleted: handlePunishmentLineCompleted, onSubmit: handleSubmit, onRetry: handleRetry, onNextMission: handleNextMission, canRetryAfterPunishment: state.uiState !== 'RESULT_FAIL' ||
+    return ((0, jsx_runtime_1.jsxs)("div", { className: rootClasses, children: [state.uiState === 'BOOTING' && (0, jsx_runtime_1.jsx)(BootScreen_1.default, {}), state.uiState === 'TRAINING_SPLASH' && (0, jsx_runtime_1.jsx)(TrainingSplash_1.default, {}), state.uiState !== 'BOOTING' && state.uiState !== 'TRAINING_SPLASH' && ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(TopBar_1.default, { uiState: state.uiState, mood: mood, timeLeftSec: timeLeftSec }), (0, jsx_runtime_1.jsx)(MissionLayout_1.default, { code: state.code, onCodeChange: handleCodeChange, editorLanguage: resolvedLanguage, readOnly: isEditorReadOnly, uiState: state.uiState, missionInstructions: state.missionInstructions, dialogueLog: state.dialogueLog, punishment: state.punishment, punishmentProgress: state.punishmentProgress, showPunishment: state.uiState === 'RESULT_FAIL', onPunishmentLineCompleted: handlePunishmentLineCompleted, onSubmit: handleSubmit, onRetry: handleRetry, onNextMission: handleNextMission, canRetryAfterPunishment: state.uiState !== 'RESULT_FAIL' ||
                             state.punishmentProgress >= config_1.PUNISHMENT_REQUIRED_REPS })] })), state.uiState === 'ANALYZING' && (0, jsx_runtime_1.jsx)(AnalyzingOverlay_1.default, {}), (state.uiState === 'RESULT_PASS' ||
                 state.uiState === 'MISSION_COMPLETE') && ((0, jsx_runtime_1.jsx)(PassScreen_1.default, { message: state.resultMessage, uiState: state.uiState, onNextMission: handleNextMission })), effects.confetti && (0, jsx_runtime_1.jsx)(EffectsLayer_1.default, { type: "confetti" }), (0, jsx_runtime_1.jsx)(CallPanel_1.default, { callStatus: state.callStatus, callError: state.callError, phoneNumber: state.phoneNumber, onPhoneNumberChange: handlePhoneNumberChange, onSubmitNumber: handleSubmitNumber, onDismiss: handleDismissCall })] }));
 };

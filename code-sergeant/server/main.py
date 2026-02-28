@@ -1,11 +1,11 @@
 import asyncio
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../agent'))
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, Body
+from fastapi import FastAPI, WebSocket, Body, BackgroundTasks
 from fastapi.websockets import WebSocketDisconnect
 import uvicorn
 import json
@@ -46,7 +46,7 @@ def health():
 
 
 @app.post("/start")
-def start(data: dict):
+async def start(data: dict, background_tasks: BackgroundTasks):
     global agent
 
     # The extension sends { dir: "..." } with the workspace path.
@@ -55,40 +55,94 @@ def start(data: dict):
 
     try:
         agent = Agent(workspace_dir)
-        response = agent.run()
     except Exception as e:
-        print(f"[start] Agent error: {e}", flush=True)
+        print(f"[start] Agent init error: {e}", flush=True)
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e), "state": drill_state}
 
-    code_challenge = response.get("challenge")
-    print(f"[start] challenge={code_challenge}", flush=True)
+    # Mark loading state and return immediately
+    drill_state["animation"] = "loading"
+    drill_state["isComplete"] = False
+    drill_state["message"] = "Sergeant is analyzing your code..."
+    drill_state["challenge"] = None
+    drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
 
-    if code_challenge:
-        # Update drill_state so the frontend has valid state
-        drill_state["animation"] = "ready"
-        drill_state["isComplete"] = False
-        drill_state["message"] = "New drill initialized"
-        drill_state["updatedAt"] = datetime.utcnow().isoformat()
+    # Run the agent in the background — challenge will appear in drill_state
+    background_tasks.add_task(run_agent_background)
 
     return {
         "ok": True,
         "state": drill_state,
-        "challenge": code_challenge.model_dump() if hasattr(code_challenge, 'model_dump') else code_challenge,
     }
 
 
+async def run_agent_background():
+    """Runs agent.run() in the background and updates drill_state when done."""
+    global agent
+    try:
+        response = await agent.run()
+        code_challenge = response.get("challenge")
+        print(f"[background] challenge={code_challenge}", flush=True)
+
+        challenge_data = None
+        if code_challenge:
+            challenge_data = code_challenge.model_dump() if hasattr(code_challenge, 'model_dump') else code_challenge
+
+        drill_state["animation"] = "ready"
+        drill_state["isComplete"] = False
+        drill_state["message"] = "New drill initialized"
+        drill_state["challenge"] = challenge_data
+        drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    except Exception as e:
+        print(f"[background] Agent error: {e}", flush=True)
+        import traceback; traceback.print_exc()
+        drill_state["animation"] = "error"
+        drill_state["isComplete"] = False
+        drill_state["message"] = f"Agent failed: {e}"
+        drill_state["challenge"] = None
+        drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
+
+
+@app.get("/state")
+def get_state():
+    """Returns the current drill state, including challenge when ready."""
+    return drill_state
+
+
 @app.post("/submit")
-def submit(data: dict):
+async def submit(data: dict):
+    global agent
     text = str(data.get("response") or data.get("code") or "")
     print(f"[submit] {text}", flush=True)
-    is_correct = False #TODO: Change later to check if it is correct with the agent
+
+    is_correct = False
+    feedback = "No active agent session."
+
+    if agent:
+        try:
+            result = await agent.resume(text)
+            grade = result.get("grade")
+            print(f"[submit] grade={grade}", flush=True)
+            # grade is a GradeResult pydantic model (passed: bool, feedback: str)
+            if hasattr(grade, "passed"):
+                is_correct = grade.passed
+                feedback = grade.feedback
+            elif isinstance(grade, dict):
+                is_correct = grade.get("passed", False)
+                feedback = grade.get("feedback", str(grade))
+            else:
+                feedback = str(grade) if grade else "Unable to grade submission."
+        except Exception as e:
+            print(f"[submit] Agent error: {e}", flush=True)
+            import traceback; traceback.print_exc()
+            feedback = f"Grading error: {e}"
+    
     drill_state["successCriteria"] = 100 if is_correct else 0
     drill_state["isComplete"] = bool(is_correct)
-    drill_state["animation"] = "complete" if drill_state["isComplete"] else "evaluating"
-    drill_state["message"] = "Mission complete" if drill_state["isComplete"] else "Keep iterating"
-    drill_state["updatedAt"] = datetime.utcnow().isoformat()
-    return {"ok": True, "state": drill_state}
+    drill_state["animation"] = "complete" if is_correct else "evaluating"
+    drill_state["message"] = feedback
+    drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    return {"ok": True, "is_correct": is_correct, "feedback": feedback, "state": drill_state}
   
 @app.post("/timeout")
 def timeout():
@@ -96,7 +150,7 @@ def timeout():
     drill_state["animation"] = "timeout"
     drill_state["isComplete"] = False
     drill_state["message"] = "Time expired. Sergeant triggered punishment."
-    drill_state["updatedAt"] = datetime.utcnow().isoformat()
+    drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
     return {
         "ok": True,
         "message": "Time expired. Sergeant triggered punishment.",

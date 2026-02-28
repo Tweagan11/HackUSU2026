@@ -43,6 +43,11 @@ export function submitCode(code: string) {
   postMessageToExtension('SUBMIT_CODE', { code });
 }
 
+/** Tell the extension the webview is ready to receive data */
+export function notifyReady() {
+  postMessageToExtension('WEBVIEW_READY');
+}
+
 /** Trigger the mission timeout on the backend */
 export function triggerTimeout() {
   postMessageToExtension('MISSION_TIMEOUT');
@@ -81,6 +86,8 @@ export function createMessageListener(
     const message = event.data;
     if (!message || !message.type) return;
 
+    console.log('[Bridge] Received message:', message.type, message);
+
     switch (message.type) {
       case 'ANALYZE_START':
         dispatch({ type: 'ANALYZE_START' });
@@ -91,6 +98,13 @@ export function createMessageListener(
       case 'RESULT_PASS':
         dispatch({ type: 'RESULT_PASS', message: message.message });
         break;
+      case 'CHALLENGE_LOADED': {
+        const c = ('challenge' in message) ? message.challenge : undefined;
+        if (c) {
+          dispatch({ type: 'CHALLENGE_LOADED', code: c.code, language: c.language, instructions: c.instructions });
+        }
+        break;
+      }
       case 'CALL_REQUESTED':
         dispatch({ type: 'CALL_REQUESTED' });
         break;
