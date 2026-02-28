@@ -26,25 +26,30 @@ import { createMessageListener, getVSCodeApi, submitCode, triggerTimeout, callSe
 import { runMockAnalyzer } from './mock';
 import {
   BOOT_DURATION_MS,
+  BUG_ALERT_DURATION_MS,
   TRAINING_SPLASH_DURATION_MS,
   MISSION_TIMER_SECONDS,
   PUNISHMENT_REQUIRED_REPS,
-  SAMPLE_CODE,
+  PUNISHMENT_PHRASE,
 } from './config';
 import type { AppState, PersistedPanelState, UIState, SergeantMood } from './types';
 
 import BootScreen from './components/BootScreen';
 import TrainingSplash from './components/TrainingSplash';
+import BriefingHold from './components/BriefingHold';
 import TopBar from './components/TopBar';
 import MissionLayout from './components/MissionLayout';
 import AnalyzingOverlay from './components/AnalyzingOverlay';
 import PassScreen from './components/PassScreen';
 import EffectsLayer from './components/EffectsLayer';
 import CallPanel from './components/CallPanel';
+import SuspicionAlert from './components/SuspicionAlert';
 
 /** Maps each UI state to the sergeant's mood */
 const MOOD_MAP: Record<UIState, SergeantMood> = {
   BOOTING: 'idle',
+  BUG_ALERT: 'suspicious',
+  BRIEFING_HOLD: 'idle',
   TRAINING_SPLASH: 'idle',
   IDLE: 'idle',
   ANALYZING: 'yelling',
@@ -74,6 +79,9 @@ function isPersistedAppState(value: unknown): value is AppState {
     Array.isArray(candidate.dialogueLog) &&
     typeof candidate.resultMessage === 'string' &&
     typeof candidate.punishment === 'string' &&
+    typeof candidate.punishmentPhrase === 'string' &&
+    typeof candidate.punishmentRequiredReps === 'number' &&
+    typeof candidate.retryUnlocked === 'boolean' &&
     (typeof candidate.punishmentProgress === 'number' ||
       typeof candidate.punishmentProgress === 'undefined') &&
     typeof candidate.attemptCount === 'number'
@@ -105,6 +113,10 @@ const App: React.FC = () => {
     ...(persistedState?.appState ?? initialState),
     code: persistedState?.appState.code ?? '',
     punishmentProgress: persistedState?.appState.punishmentProgress ?? 0,
+    punishmentPhrase: persistedState?.appState.punishmentPhrase ?? PUNISHMENT_PHRASE,
+    punishmentRequiredReps:
+      persistedState?.appState.punishmentRequiredReps ?? PUNISHMENT_REQUIRED_REPS,
+    retryUnlocked: persistedState?.appState.retryUnlocked ?? false,
   });
 
   const [effects, setEffects] = useState({
@@ -122,11 +134,11 @@ const App: React.FC = () => {
   const isDevMode = !getVSCodeApi();
 
   // --- Dev mode: load sample code when no backend is available ---
-  useEffect(() => {
-    if (isDevMode && !state.code) {
-      dispatch({ type: 'CHALLENGE_LOADED', code: SAMPLE_CODE, language: 'javascript', instructions: 'Fix the null pointer bug so getUserName handles null values safely.' });
-    }
-  }, [isDevMode, state.code]);
+  // useEffect(() => {
+  //   if (isDevMode && !state.code) {
+  //     dispatch({ type: 'CHALLENGE_LOADED', code: SAMPLE_CODE, language: 'javascript', instructions: 'Fix the null pointer bug so getUserName handles null values safely.' });
+  //   }
+  // }, [isDevMode, state.code]);
 
   // --- Boot sequence: auto-transition to IDLE after delay ---
   useEffect(() => {
@@ -143,6 +155,16 @@ const App: React.FC = () => {
     const timer = setTimeout(
       () => dispatch({ type: 'TRAINING_SPLASH_COMPLETE' }),
       TRAINING_SPLASH_DURATION_MS
+    );
+    return () => clearTimeout(timer);
+  }, [state.uiState]);
+
+  // --- Suspicion alert: brief cinematic warning before training ---
+  useEffect(() => {
+    if (state.uiState !== 'BUG_ALERT') return;
+    const timer = setTimeout(
+      () => dispatch({ type: 'BUG_ALERT_COMPLETE' }),
+      BUG_ALERT_DURATION_MS
     );
     return () => clearTimeout(timer);
   }, [state.uiState]);
@@ -220,20 +242,26 @@ const App: React.FC = () => {
   }, [state.uiState, state.attemptCount]);
 
   // --- Handlers ---
-  const handleSubmit = useCallback(() => {
-    dispatch({ type: 'SUBMIT_CODE' });
+  const sendCodeForAnalysis = useCallback(() => {
     if (isDevMode) {
-      // Development mode: simulate backend with mock analyzer
       runMockAnalyzer(dispatch);
     } else {
-      // Production: send code to extension host → backend
       submitCode(state.code);
     }
   }, [isDevMode, state.code]);
 
-  const handleRetry = useCallback(() => {
+  const handleSubmit = useCallback(() => {
+    if (state.uiState !== 'IDLE') return;
+    dispatch({ type: 'SUBMIT_CODE' });
+    sendCodeForAnalysis();
+  }, [state.uiState, sendCodeForAnalysis]);
+
+  const handleResubmit = useCallback(() => {
+    if (state.uiState !== 'RESULT_FAIL' || !state.retryUnlocked) return;
     dispatch({ type: 'RETRY' });
-  }, []);
+    dispatch({ type: 'SUBMIT_CODE' });
+    sendCodeForAnalysis();
+  }, [state.uiState, state.retryUnlocked, sendCodeForAnalysis]);
 
   const handlePunishmentLineCompleted = useCallback(() => {
     dispatch({ type: 'PUNISHMENT_LINE_COMPLETED' });
@@ -276,7 +304,15 @@ const App: React.FC = () => {
 
   // --- Derived state ---
   const mood = MOOD_MAP[state.uiState];
-  const isEditorReadOnly = state.uiState !== 'IDLE';
+  const isEditorReadOnly =
+    state.uiState === 'BOOTING' ||
+    state.uiState === 'BUG_ALERT' ||
+    state.uiState === 'BRIEFING_HOLD' ||
+    state.uiState === 'TRAINING_SPLASH' ||
+    state.uiState === 'ANALYZING' ||
+    state.uiState === 'RESULT_PASS' ||
+    state.uiState === 'MISSION_COMPLETE' ||
+    (state.uiState === 'RESULT_FAIL' && !state.retryUnlocked);
   // Use the language from the agent's challenge, fall back to editor language
   const resolvedLanguage = state.challengeLanguage || editorLanguage;
 
@@ -292,34 +328,40 @@ const App: React.FC = () => {
     <div className={rootClasses}>
       {/* BOOTING state: show boot screen */}
       {state.uiState === 'BOOTING' && <BootScreen />}
+      {state.uiState === 'BUG_ALERT' && <SuspicionAlert />}
       {state.uiState === 'TRAINING_SPLASH' && <TrainingSplash />}
+      {state.uiState === 'BRIEFING_HOLD' && <BriefingHold />}
 
       {/* Main mission UI (hidden during boot + training splash) */}
-      {state.uiState !== 'BOOTING' && state.uiState !== 'TRAINING_SPLASH' && (
-        <>
-          <TopBar uiState={state.uiState} mood={mood} timeLeftSec={timeLeftSec} />
-          <MissionLayout
-            code={state.code}
-            onCodeChange={handleCodeChange}
-            editorLanguage={resolvedLanguage}
-            readOnly={isEditorReadOnly}
-            uiState={state.uiState}
-            missionInstructions={state.missionInstructions}
-            dialogueLog={state.dialogueLog}
-            punishment={state.punishment}
-            punishmentProgress={state.punishmentProgress}
-            showPunishment={state.uiState === 'RESULT_FAIL'}
-            onPunishmentLineCompleted={handlePunishmentLineCompleted}
-            onSubmit={handleSubmit}
-            onRetry={handleRetry}
-            onNextMission={handleNextMission}
-            canRetryAfterPunishment={
-              state.uiState !== 'RESULT_FAIL' ||
-              state.punishmentProgress >= PUNISHMENT_REQUIRED_REPS
-            }
-          />
-        </>
-      )}
+      {state.uiState !== 'BOOTING' &&
+        state.uiState !== 'BUG_ALERT' &&
+        state.uiState !== 'TRAINING_SPLASH' &&
+        state.uiState !== 'BRIEFING_HOLD' && (
+          <>
+            <TopBar uiState={state.uiState} mood={mood} timeLeftSec={timeLeftSec} />
+            <MissionLayout
+              code={state.code}
+              onCodeChange={handleCodeChange}
+              editorLanguage={resolvedLanguage}
+              readOnly={isEditorReadOnly}
+              uiState={state.uiState}
+              missionInstructions={state.missionInstructions}
+              dialogueLog={state.dialogueLog}
+              punishment={state.punishment}
+              punishmentPhrase={state.punishmentPhrase}
+              punishmentRequiredReps={state.punishmentRequiredReps}
+              punishmentProgress={state.punishmentProgress}
+              showPunishment={state.uiState === 'RESULT_FAIL'}
+              onPunishmentLineCompleted={handlePunishmentLineCompleted}
+              onSubmit={handleSubmit}
+              onResubmit={handleResubmit}
+              onNextMission={handleNextMission}
+              canRetryAfterPunishment={
+                state.uiState === 'RESULT_FAIL' ? state.retryUnlocked : true
+              }
+            />
+          </>
+        )}
 
       {/* ANALYZING overlay: locks UI */}
       {state.uiState === 'ANALYZING' && <AnalyzingOverlay />}

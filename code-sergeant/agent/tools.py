@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 from langchain.chat_models import init_chat_model
-from langchain.messages import SystemMessage
+from langchain_core.messages import SystemMessage
 from utils import *
 
 #Define tools

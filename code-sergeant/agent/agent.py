@@ -140,4 +140,3 @@ if __name__ == "__main__":
         await agent.resume(user_solution)
 
     asyncio.run(main())
- 22

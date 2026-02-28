@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { PUNISHMENT_PHRASE, PUNISHMENT_REQUIRED_REPS } from '../config';
 
 interface PunishmentBoxProps {
   punishment: string;
   visible: boolean;
+  phrase: string;
+  requiredReps: number;
   progress: number;
   onLineCompleted: () => void;
 }
@@ -16,6 +17,8 @@ interface PunishmentBoxProps {
 const PunishmentBox: React.FC<PunishmentBoxProps> = ({
   punishment,
   visible,
+  phrase,
+  requiredReps,
   progress,
   onLineCompleted,
 }) => {
@@ -47,12 +50,19 @@ const PunishmentBox: React.FC<PunishmentBoxProps> = ({
 
   if (!visible) return null;
 
-  const isComplete = progress >= PUNISHMENT_REQUIRED_REPS;
+  const totalReps = Math.max(0, requiredReps);
+  const isComplete = totalReps === 0 || progress >= totalReps;
+
+  const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toUpperCase();
 
   const submitLine = () => {
-    const normalized = lineInput.trim().replace(/\s+/g, ' ');
-    if (normalized !== PUNISHMENT_PHRASE) {
-      setError(`Type exactly: "${PUNISHMENT_PHRASE}"`);
+    const normalizedInput = normalize(lineInput);
+    if (!normalizedInput.length) {
+      setError('Type the punishment phrase before submitting.');
+      return;
+    }
+    if (normalizedInput !== normalize(phrase)) {
+      setError(`Type exactly: "${phrase}"`);
       return;
     }
     setError('');
@@ -67,7 +77,9 @@ const PunishmentBox: React.FC<PunishmentBoxProps> = ({
       <div className="punishment-box__header">⚠ PUNISHMENT ⚠</div>
       <div className="punishment-box__text">{displayedText}</div>
       <div className="punishment-box__progress">
-        {progress}/{PUNISHMENT_REQUIRED_REPS} completed
+        {totalReps > 0
+          ? `${Math.min(progress, totalReps)}/${totalReps} completed`
+          : 'No punishment required'}
       </div>
       {!isComplete && (
         <>
@@ -81,7 +93,7 @@ const PunishmentBox: React.FC<PunishmentBoxProps> = ({
                 submitLine();
               }
             }}
-            placeholder={PUNISHMENT_PHRASE}
+            placeholder={phrase}
             aria-label="Punishment phrase input"
           />
           <button

@@ -163,7 +163,145 @@ body,
       #3fca90 10px,
       #3fca90 20px);
   box-shadow: 0 0 14px rgba(113, 247, 181, 0.55);
-  animation: boot-progress 2.2s steps(25, end) forwards;
+  animation: boot-progress 1.4s steps(25, end) forwards;
+}
+
+.suspicion-alert {
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 216, 90, 0.14) 0 20%, transparent 21%),
+    radial-gradient(circle at 80% 30%, rgba(113, 247, 181, 0.15) 0 18%, transparent 19%),
+    linear-gradient(180deg, #090d0f 0%, #05080a 100%);
+}
+
+.suspicion-alert__badge {
+  padding: 6px 14px;
+  border: var(--border) solid var(--px-warning);
+  color: var(--px-warning);
+  letter-spacing: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 0 var(--pixel) #000, 0 0 24px rgba(255, 216, 90, 0.22);
+  animation: warning-flicker 0.7s steps(2, end) infinite;
+}
+
+.suspicion-alert__headline {
+  font-size: clamp(18px, 3vw, 32px);
+  color: var(--px-accent);
+  text-shadow: 2px 2px 0 #000;
+}
+
+.suspicion-alert__subtext,
+.suspicion-alert__cta {
+  max-width: 520px;
+  font-size: clamp(10px, 1.05vw, 14px);
+  color: var(--px-muted);
+}
+
+.suspicion-alert__scanner {
+  position: relative;
+  width: min(520px, 85vw);
+  height: 120px;
+  border: var(--border) solid #39464c;
+  background: #030608;
+  box-shadow: inset 0 0 0 var(--pixel) #000;
+  overflow: hidden;
+}
+
+.suspicion-alert__scanner-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  padding: 18px;
+}
+
+.suspicion-alert__scanner-dot {
+  width: 6px;
+  height: 6px;
+  justify-self: center;
+  align-self: center;
+  background: rgba(113, 247, 181, 0.45);
+  animation: scanner-dot 1.2s linear infinite;
+}
+
+.suspicion-alert__scanner-dot:nth-child(odd) {
+  animation-delay: 0.2s;
+}
+
+.suspicion-alert__scanner-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 10px;
+  background: linear-gradient(90deg, transparent, rgba(113, 247, 181, 0.4), transparent);
+  animation: scanner-line 1.8s linear infinite;
+}
+
+.briefing-hold {
+  position: absolute;
+  inset: 0;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(113, 247, 181, 0.12) 0%, transparent 45%),
+    linear-gradient(180deg, rgba(4, 10, 10, 0.92) 0%, rgba(3, 6, 6, 0.98) 100%);
+}
+
+.briefing-hold__radar {
+  width: min(240px, 46vw);
+  height: min(240px, 46vw);
+  border-radius: 50%;
+  border: var(--border) solid #1c3b2f;
+  background: radial-gradient(circle, rgba(0, 255, 156, 0.08) 0%, transparent 65%);
+  position: relative;
+  overflow: hidden;
+}
+
+.briefing-hold__radar-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120%;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(0, 255, 156, 0), rgba(0, 255, 156, 0.75));
+  transform-origin: left center;
+  animation: radar-spin 2.4s linear infinite;
+}
+
+.briefing-hold__radar-pulse {
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 255, 156, 0.35);
+  animation: radar-pulse 1.6s ease-out infinite;
+}
+
+.briefing-hold__title {
+  font-size: clamp(16px, 2.7vw, 26px);
+  color: var(--px-warning);
+  text-shadow: 2px 2px 0 #000;
+}
+
+.briefing-hold__text {
+  max-width: 520px;
+  font-size: clamp(10px, 1.05vw, 14px);
+  color: var(--px-muted);
+  margin: 0;
 }
 
 .top-bar {
@@ -639,6 +777,26 @@ body,
   height: 3px;
 }
 
+.sergeant-face--suspicious .sergeant-face__brow {
+  transform: skewX(14deg);
+}
+
+.sergeant-face--suspicious .sergeant-face__mouth {
+  width: 24px;
+  height: 2px;
+  left: 22px;
+  background: #25352d;
+}
+
+.sergeant-face--suspicious .sergeant-face__eyes {
+  animation: suspicion-eyes 0.95s steps(2, end) infinite;
+}
+
+.sergeant-face--suspicious .sergeant-face__eye {
+  background: #fff2a3;
+  animation: suspicion-blink 2s steps(2, end) infinite;
+}
+
 .sergeant-face--yelling .sergeant-face__mouth {
   top: 39px;
   height: 8px;
@@ -805,6 +963,83 @@ body,
 
   to {
     width: 100%;
+  }
+}
+
+@keyframes scanner-line {
+  0% {
+    transform: translateY(-20%);
+  }
+
+  100% {
+    transform: translateY(120%);
+  }
+}
+
+@keyframes scanner-dot {
+  0% {
+    opacity: 0.2;
+    transform: scale(0.6);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+
+  100% {
+    opacity: 0.2;
+    transform: scale(0.6);
+  }
+}
+
+@keyframes suspicion-eyes {
+  0% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(2px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes suspicion-blink {
+  0% {
+    box-shadow: inset 0 0 0 2px #000;
+  }
+
+  50% {
+    box-shadow: inset 0 0 0 2px #000, 0 0 6px rgba(255, 247, 186, 0.6);
+  }
+
+  100% {
+    box-shadow: inset 0 0 0 2px #000;
+  }
+}
+
+@keyframes radar-spin {
+  0% {
+    transform: rotate(0deg) translate(-50%, -50%);
+  }
+
+  100% {
+    transform: rotate(360deg) translate(-50%, -50%);
+  }
+}
+
+@keyframes radar-pulse {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 0;
   }
 }
 

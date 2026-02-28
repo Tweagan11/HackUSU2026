@@ -41,28 +41,29 @@ export const DIALOGUE = {
     "INITIALIZING TACTICAL DEBUGGER…",
     "SERGEANT REPORTING FOR DUTY.",
   ],
+  briefing: [
+    'HOLD POSITION. GATHERING BUG INTEL.',
+    'STAY SHARP. MISSION DATA INCOMING.',
+    'SCANNING FILES FOR VIOLATIONS…',
+  ],
+  alert: [
+    "HOLD UP… SOMETHING SMELLS BUGGY.",
+    "EYES OPEN. CODE CRIMES DETECTED.",
+    "THE SERGEANT IS SUSPICIOUS OF THIS REPO.",
+  ],
 } as const;
 
-/** Sample code loaded into the editor on boot */
-export const SAMPLE_CODE = `// MISSION: Fix the null pointer bug
-function getUserName(user) {
-  // BUG: user might be null!
-  return user.name.toUpperCase();
-}
-
-// Fix the code above so it handles null values
-const result = getUserName(null);
-console.log(result);
-`;
-
 /** Boot screen duration in milliseconds */
-export const BOOT_DURATION_MS = 2500;
+export const BOOT_DURATION_MS = 1400;
+
+/** Suspicion alert duration in milliseconds */
+export const BUG_ALERT_DURATION_MS = 1000;
 
 /** Training splash duration in milliseconds */
-export const TRAINING_SPLASH_DURATION_MS = 1200;
+export const TRAINING_SPLASH_DURATION_MS = 1000;
 
 /** Mock analyzer delay in milliseconds */
-export const ANALYZE_MOCK_DELAY_MS = 1500;
+export const ANALYZE_MOCK_DELAY_MS = 1000;
 
 /** Mission timer duration in seconds */
 export const MISSION_TIMER_SECONDS = 90;

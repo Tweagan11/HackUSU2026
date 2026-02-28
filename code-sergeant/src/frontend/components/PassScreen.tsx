@@ -26,8 +26,8 @@ const PassScreen: React.FC<PassScreenProps> = ({ message, uiState, onNextMission
       <div className="pass-screen__action">
         <ActionButton
           uiState={uiState}
-          onSubmit={() => {}}
-          onRetry={() => {}}
+          onSubmit={() => { }}
+          onResubmit={() => { }}
           onNextMission={onNextMission}
           canRetryAfterPunishment={true}
         />
