@@ -14,6 +14,7 @@ from call_router import router as call_router
 app = FastAPI()
 app.include_router(call_router)
 
+workspace_dir: str | None = None
 workspace_files = {}
 punishments = [
     "DROP AND GIVE ME 20 SEMICOLONS!",
@@ -41,8 +42,9 @@ def health():
 
 @app.post("/start")
 def start(data: dict):
-    global workspace_files
-    workspace_files = data["files"]
+    global workspace_dir
+    workspace_dir = data.get("dir")
+    print(f"[start] workspace_dir={workspace_dir}", flush=True)
     drill_state["animation"] = "ready"
     drill_state["successCriteria"] = 0
     drill_state["isComplete"] = False
