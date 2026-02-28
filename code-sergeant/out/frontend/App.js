@@ -31,6 +31,7 @@ const bridge_1 = require("./bridge");
 const mock_1 = require("./mock");
 const config_1 = require("./config");
 const BootScreen_1 = __importDefault(require("./components/BootScreen"));
+const TrainingSplash_1 = __importDefault(require("./components/TrainingSplash"));
 const TopBar_1 = __importDefault(require("./components/TopBar"));
 const MissionLayout_1 = __importDefault(require("./components/MissionLayout"));
 const AnalyzingOverlay_1 = __importDefault(require("./components/AnalyzingOverlay"));
@@ -39,12 +40,17 @@ const EffectsLayer_1 = __importDefault(require("./components/EffectsLayer"));
 /** Maps each UI state to the sergeant's mood */
 const MOOD_MAP = {
     BOOTING: 'idle',
+    TRAINING_SPLASH: 'idle',
     IDLE: 'idle',
     ANALYZING: 'yelling',
     RESULT_FAIL: 'angry',
     RESULT_PASS: 'proud',
     MISSION_COMPLETE: 'proud',
 };
+function readEditorLanguage() {
+    const raw = window.__CODE_SERGEANT_EDITOR_LANGUAGE__;
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw : 'plaintext';
+}
 function isPersistedAppState(value) {
     if (!value || typeof value !== 'object')
         return false;
@@ -54,6 +60,8 @@ function isPersistedAppState(value) {
         Array.isArray(candidate.dialogueLog) &&
         typeof candidate.resultMessage === 'string' &&
         typeof candidate.punishment === 'string' &&
+        (typeof candidate.punishmentProgress === 'number' ||
+            typeof candidate.punishmentProgress === 'undefined') &&
         typeof candidate.attemptCount === 'number');
 }
 function readPersistedState() {
@@ -65,8 +73,6 @@ function readPersistedState() {
     if (candidate.version !== 1)
         return null;
     if (!isPersistedAppState(candidate.appState))
-        return null;
-    if (candidate.appState.uiState === 'ANALYZING')
         return null;
     if (typeof candidate.timeLeftSec !== 'number' || !Number.isFinite(candidate.timeLeftSec))
         return null;
@@ -81,9 +87,11 @@ function readPersistedState() {
 }
 const App = () => {
     const persistedState = readPersistedState();
+    const editorLanguage = readEditorLanguage();
     const [state, dispatch] = (0, react_1.useReducer)(reducer_1.appReducer, {
         ...(persistedState?.appState ?? reducer_1.initialState),
         code: persistedState?.appState.code ?? config_1.SAMPLE_CODE,
+        punishmentProgress: persistedState?.appState.punishmentProgress ?? 0,
     });
     const [effects, setEffects] = (0, react_1.useState)({
         shake: false,
@@ -100,6 +108,13 @@ const App = () => {
         const timer = setTimeout(() => dispatch({ type: 'BOOT_COMPLETE' }), config_1.BOOT_DURATION_MS);
         return () => clearTimeout(timer);
     }, []);
+    // --- Training splash: transition to coding UI after delay ---
+    (0, react_1.useEffect)(() => {
+        if (state.uiState !== 'TRAINING_SPLASH')
+            return;
+        const timer = setTimeout(() => dispatch({ type: 'TRAINING_SPLASH_COMPLETE' }), config_1.TRAINING_SPLASH_DURATION_MS);
+        return () => clearTimeout(timer);
+    }, [state.uiState]);
     // --- Listen for messages from the VS Code extension host ---
     (0, react_1.useEffect)(() => (0, bridge_1.createMessageListener)(dispatch), []);
     // --- Persist snapshot to webview and extension host for restore after close ---
@@ -134,11 +149,9 @@ const App = () => {
         if (timeLeftSec <= 0) {
             timeoutTriggeredRef.current = true;
             if (isDevMode) {
-                const punishment = config_1.PUNISHMENTS[Math.floor(Math.random() * config_1.PUNISHMENTS.length)];
                 dispatch({
                     type: 'RESULT_FAIL',
                     message: 'Time expired. Sergeant initiated punishment protocol.',
-                    punishment,
                 });
             }
             else {
@@ -182,6 +195,9 @@ const App = () => {
     const handleRetry = (0, react_1.useCallback)(() => {
         dispatch({ type: 'RETRY' });
     }, []);
+    const handlePunishmentLineCompleted = (0, react_1.useCallback)(() => {
+        dispatch({ type: 'PUNISHMENT_LINE_COMPLETED' });
+    }, []);
     const handleNextMission = (0, react_1.useCallback)(() => {
         dispatch({ type: 'NEXT_MISSION' });
     }, []);
@@ -219,7 +235,8 @@ const App = () => {
     ]
         .filter(Boolean)
         .join(' ');
-    return ((0, jsx_runtime_1.jsxs)("div", { className: rootClasses, children: [state.uiState === 'BOOTING' && (0, jsx_runtime_1.jsx)(BootScreen_1.default, {}), state.uiState !== 'BOOTING' && ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(TopBar_1.default, { uiState: state.uiState, mood: mood, timeLeftSec: timeLeftSec }), (0, jsx_runtime_1.jsx)(MissionLayout_1.default, { code: state.code, onCodeChange: handleCodeChange, readOnly: isEditorReadOnly, uiState: state.uiState, dialogueLog: state.dialogueLog, punishment: state.punishment, showPunishment: state.uiState === 'RESULT_FAIL', onSubmit: handleSubmit, onRetry: handleRetry, onNextMission: handleNextMission, callStatus: state.callStatus, callError: state.callError, phoneNumber: state.phoneNumber, onPhoneNumberChange: handlePhoneNumberChange, onCallSergeant: handleCallSergeant })] })), state.uiState === 'ANALYZING' && (0, jsx_runtime_1.jsx)(AnalyzingOverlay_1.default, {}), (state.uiState === 'RESULT_PASS' ||
+    return ((0, jsx_runtime_1.jsxs)("div", { className: rootClasses, children: [state.uiState === 'BOOTING' && (0, jsx_runtime_1.jsx)(BootScreen_1.default, {}), state.uiState === 'TRAINING_SPLASH' && (0, jsx_runtime_1.jsx)(TrainingSplash_1.default, {}), state.uiState !== 'BOOTING' && state.uiState !== 'TRAINING_SPLASH' && ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(TopBar_1.default, { uiState: state.uiState, mood: mood, timeLeftSec: timeLeftSec }), (0, jsx_runtime_1.jsx)(MissionLayout_1.default, { code: state.code, onCodeChange: handleCodeChange, editorLanguage: editorLanguage, readOnly: isEditorReadOnly, uiState: state.uiState, dialogueLog: state.dialogueLog, punishment: state.punishment, punishmentProgress: state.punishmentProgress, showPunishment: state.uiState === 'RESULT_FAIL', onPunishmentLineCompleted: handlePunishmentLineCompleted, onSubmit: handleSubmit, onRetry: handleRetry, onNextMission: handleNextMission, canRetryAfterPunishment: state.uiState !== 'RESULT_FAIL' ||
+                            state.punishmentProgress >= config_1.PUNISHMENT_REQUIRED_REPS, callStatus: state.callStatus, callError: state.callError, phoneNumber: state.phoneNumber, onPhoneNumberChange: handlePhoneNumberChange, onCallSergeant: handleCallSergeant })] })), state.uiState === 'ANALYZING' && (0, jsx_runtime_1.jsx)(AnalyzingOverlay_1.default, {}), (state.uiState === 'RESULT_PASS' ||
                 state.uiState === 'MISSION_COMPLETE') && ((0, jsx_runtime_1.jsx)(PassScreen_1.default, { message: state.resultMessage, uiState: state.uiState, onNextMission: handleNextMission })), effects.confetti && (0, jsx_runtime_1.jsx)(EffectsLayer_1.default, { type: "confetti" })] }));
 };
 exports.default = App;

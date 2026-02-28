@@ -67,10 +67,25 @@ function activate(context) {
         }
         triggerSergeantIfNeeded(context, `terminal:${commandLine}`);
     });
+    const terminalOpenListener = vscode.window.onDidOpenTerminal((terminal) => {
+        triggerSergeantIfNeeded(context, `terminal-open:${terminal.name}`);
+    });
+    const activeTerminalListener = vscode.window.onDidChangeActiveTerminal((terminal) => {
+        if (!terminal) {
+            return;
+        }
+        triggerSergeantIfNeeded(context, `terminal-focus:${terminal.name}`);
+    });
     const debugSessionListener = vscode.debug.onDidStartDebugSession(() => {
         triggerSergeantIfNeeded(context, 'debug');
     });
-    context.subscriptions.push(disposable, terminalExecutionListener, debugSessionListener);
+    const taskStartListener = vscode.tasks.onDidStartTask((event) => {
+        triggerSergeantIfNeeded(context, `task:${event.execution.task.name}`);
+    });
+    const taskProcessStartListener = vscode.tasks.onDidStartTaskProcess((event) => {
+        triggerSergeantIfNeeded(context, `task-process:${event.execution.task.name}`);
+    });
+    context.subscriptions.push(disposable, terminalExecutionListener, terminalOpenListener, activeTerminalListener, debugSessionListener, taskStartListener, taskProcessStartListener);
 }
 /* ------------------------------------------------------------------ */
 /*  Workflow entry-point                                               */
@@ -85,28 +100,23 @@ function triggerSergeantIfNeeded(context, reason) {
 }
 async function openSergeantWorkflow(context, reason) {
     try {
-        if (currentPanel) {
-            // Force a full restart so latest frontend bundle/state is loaded.
-            panelLockEnabled = false;
-            currentPanel.dispose();
-            currentPanel = null;
-            stopBackendPolling();
-            killServer();
-            lastServerUrl = null;
+        // If a locked session is already active, just bring it back.
+        // This preserves mission progress when the user closes/reopens.
+        if (panelLockEnabled && currentPanel) {
+            createOrRevealLockedPanel(context);
+            return;
         }
         console.log(`[Code Sergeant] Triggered by ${reason}`);
         const port = await findAvailablePort();
         const serverUrl = `http://127.0.0.1:${port}`;
         await startServer(context, port);
         await waitForServer(`${serverUrl}/health`);
-        const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
-        const workspacePayload = {
-            files: workspaceFolders.map((f) => f.uri.fsPath),
-        };
+        const dir = resolveActiveWorkingDirectory();
+        const json = { dir };
         const startResponse = await fetch(`${serverUrl}/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(workspacePayload),
+            body: JSON.stringify(json),
         });
         if (!startResponse.ok) {
             throw new Error(`Server returned ${startResponse.status} ${startResponse.statusText}`);
@@ -118,6 +128,7 @@ async function openSergeantWorkflow(context, reason) {
             typeof startPayload.state !== 'object') {
             throw new Error('Server returned an invalid start payload');
         }
+        // Fresh run should start from boot/training flow, not prior mission state.
         await clearPersistedPanelState(context);
         panelLockEnabled = true;
         lastServerUrl = serverUrl;
@@ -169,6 +180,44 @@ function stripLeadingEnvAssignments(commandLine) {
         remaining = remaining.slice(match[0].length).trimStart();
     }
     return remaining;
+}
+function resolveActiveWorkingDirectory() {
+    const activeUri = vscode.window.activeTextEditor?.document.uri;
+    if (activeUri) {
+        const activeWorkspace = vscode.workspace.getWorkspaceFolder(activeUri);
+        if (activeWorkspace) {
+            return pathFromUri(activeWorkspace.uri);
+        }
+        if (activeUri.scheme === 'file') {
+            return path.dirname(activeUri.fsPath);
+        }
+    }
+    const fallbackWorkspace = vscode.workspace.workspaceFolders?.[0];
+    if (fallbackWorkspace) {
+        return pathFromUri(fallbackWorkspace.uri);
+    }
+    return null;
+}
+function pathFromUri(uri) {
+    return uri.scheme === 'file' ? uri.fsPath : uri.path;
+}
+function resolveActiveEditorLanguageId() {
+    const rawLanguageId = vscode.window.activeTextEditor?.document.languageId;
+    if (!rawLanguageId) {
+        return 'plaintext';
+    }
+    const mapping = {
+        javascriptreact: 'javascript',
+        typescriptreact: 'typescript',
+        shellscript: 'shell',
+        c: 'cpp',
+        'c++': 'cpp',
+        cpp: 'cpp',
+        'objective-c': 'objective-c',
+        'objective-cpp': 'objective-c',
+        csharp: 'csharp',
+    };
+    return mapping[rawLanguageId] ?? rawLanguageId;
 }
 /* ------------------------------------------------------------------ */
 /*  Python server management                                           */
@@ -232,7 +281,7 @@ function createOrRevealLockedPanel(context) {
             vscode.Uri.joinPath(context.extensionUri, 'media'),
         ],
     });
-    currentPanel.webview.html = getWebviewHtml(currentPanel.webview, context.extensionUri, persistedPanelState);
+    currentPanel.webview.html = getWebviewHtml(currentPanel.webview, context.extensionUri, persistedPanelState, resolveActiveEditorLanguageId());
     currentPanel.webview.onDidReceiveMessage((message) => void handleWebviewMessage(message, context));
     currentPanel.onDidDispose(() => {
         currentPanel = null;
@@ -374,10 +423,11 @@ async function handleWebviewMessage(message, context) {
 /* ------------------------------------------------------------------ */
 /*  Webview HTML                                                       */
 /* ------------------------------------------------------------------ */
-function getWebviewHtml(webview, extensionUri, initialState) {
+function getWebviewHtml(webview, extensionUri, initialState, editorLanguage) {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'webview.js'));
     const nonce = getNonce();
     const serializedInitialState = JSON.stringify(initialState ?? null).replace(/</g, '\\u003c');
+    const serializedEditorLanguage = JSON.stringify(editorLanguage ?? 'plaintext').replace(/</g, '\\u003c');
     return /* html */ `<!DOCTYPE html>
 <html>
 <head>
@@ -399,6 +449,7 @@ function getWebviewHtml(webview, extensionUri, initialState) {
   <div id="root"></div>
   <script nonce="${nonce}">
     window.__CODE_SERGEANT_INITIAL_STATE__ = ${serializedInitialState};
+    window.__CODE_SERGEANT_EDITOR_LANGUAGE__ = ${serializedEditorLanguage};
   </script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

@@ -6,18 +6,11 @@
  * and theme values live here.
  * ========================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CSS_VARS = exports.FAIL_PASS_RATIO = exports.MISSION_TIMER_SECONDS = exports.ANALYZE_MOCK_DELAY_MS = exports.BOOT_DURATION_MS = exports.SAMPLE_CODE = exports.DIALOGUE = exports.PUNISHMENTS = void 0;
-/** Random punishments shown on RESULT_FAIL */
-exports.PUNISHMENTS = [
-    "DROP AND GIVE ME 20 SEMICOLONS!",
-    "YOU CALL THAT A LOOP, RECRUIT?",
-    "THIS CODE WOULDN'T PASS BASIC TRAINING!",
-    "YOUR NULL CHECK IS MISSING, SOLDIER!",
-    "I'VE SEEN BETTER CODE FROM A CALCULATOR!",
-    "DID YOUR CAT WRITE THIS?!",
-    "THIS FUNCTION IS AWOL, RECRUIT!",
-    "YOUR VARIABLE NAMES ARE A WAR CRIME!",
-];
+exports.CSS_VARS = exports.FAIL_PASS_RATIO = exports.MISSION_TIMER_SECONDS = exports.ANALYZE_MOCK_DELAY_MS = exports.TRAINING_SPLASH_DURATION_MS = exports.BOOT_DURATION_MS = exports.SAMPLE_CODE = exports.DIALOGUE = exports.PUNISHMENT_REQUIRED_REPS = exports.PUNISHMENT_PHRASE = void 0;
+/** Mandatory punishment phrase for failed attempts */
+exports.PUNISHMENT_PHRASE = 'I WILL DO BETTER';
+/** Number of required repetitions before retry is allowed */
+exports.PUNISHMENT_REQUIRED_REPS = 10;
 /** Dialogue lines by state category */
 exports.DIALOGUE = {
     idle: [
@@ -62,6 +55,8 @@ console.log(result);
 `;
 /** Boot screen duration in milliseconds */
 exports.BOOT_DURATION_MS = 2500;
+/** Training splash duration in milliseconds */
+exports.TRAINING_SPLASH_DURATION_MS = 1200;
 /** Mock analyzer delay in milliseconds */
 exports.ANALYZE_MOCK_DELAY_MS = 1500;
 /** Mission timer duration in seconds */

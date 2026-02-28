@@ -10,7 +10,7 @@ const jsx_runtime_1 = require("react/jsx-runtime");
  *   RESULT_PASS   → "★ NEXT MISSION"
  *   MISSION_COMPLETE → "DISMISSED" (disabled)
  */
-const ActionButton = ({ uiState, onSubmit, onRetry, onNextMission, }) => {
+const ActionButton = ({ uiState, onSubmit, onRetry, onNextMission, canRetryAfterPunishment, }) => {
     let label = '⚔ SUBMIT FIX';
     let onClick = onSubmit;
     let disabled = false;
@@ -28,8 +28,11 @@ const ActionButton = ({ uiState, onSubmit, onRetry, onNextMission, }) => {
             disabled = true;
             break;
         case 'RESULT_FAIL':
-            label = '↻ TRY AGAIN, RECRUIT';
+            label = canRetryAfterPunishment
+                ? '↻ TRY AGAIN, RECRUIT'
+                : 'PUNISHMENT IN PROGRESS';
             onClick = onRetry;
+            disabled = !canRetryAfterPunishment;
             break;
         case 'RESULT_PASS':
             label = '★ NEXT MISSION';
