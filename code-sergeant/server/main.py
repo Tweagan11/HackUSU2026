@@ -22,6 +22,7 @@ app = FastAPI()
 app.include_router(call_router)
 
 agent = None
+agent_run_params = {}
 
 # Ngrok tunnel state — populated at startup when running via __main__
 ngrok_state: dict = {
@@ -93,11 +94,19 @@ def ngrok_status():
 
 @app.post("/start")
 async def start(data: dict, background_tasks: BackgroundTasks):
-    global agent
+    global agent, agent_run_params
 
     # The extension sends { dir: "..." } with the workspace path.
     workspace_dir = data.get("dir") or data.get("workspace_dir") or "."
     print(f"[start] workspace_dir={workspace_dir}", flush=True)
+
+    # Optional contact fields — can come from the request body or fall back to env vars
+    agent_run_params = {
+        "email": data.get("email") or os.getenv("RECRUIT_EMAIL", ""),
+        "boss_email": data.get("boss_email") or os.getenv("BOSS_EMAIL", ""),
+        "phone_number": data.get("phone_number") or os.getenv("RECRUIT_PHONE", ""),
+    }
+    print(f"[start] agent_run_params={agent_run_params}", flush=True)
 
     try:
         agent = Agent(workspace_dir)
@@ -127,7 +136,7 @@ async def run_agent_background():
     """Runs agent.run() in the background and updates drill_state when done."""
     global agent
     try:
-        response = await agent.run()
+        response = await agent.run(**agent_run_params)
         code_challenge = response.get("challenge")
         print(f"[background] challenge={code_challenge}", flush=True)
 
@@ -271,3 +280,4 @@ if __name__ == "__main__":
         print("[ngrok] Falling back to PUBLIC_BASE_URL from .env (if set).", flush=True)
 
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    
