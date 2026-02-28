@@ -36,6 +36,7 @@ const MissionLayout_1 = __importDefault(require("./components/MissionLayout"));
 const AnalyzingOverlay_1 = __importDefault(require("./components/AnalyzingOverlay"));
 const PassScreen_1 = __importDefault(require("./components/PassScreen"));
 const EffectsLayer_1 = __importDefault(require("./components/EffectsLayer"));
+const CallPanel_1 = __importDefault(require("./components/CallPanel"));
 /** Maps each UI state to the sergeant's mood */
 const MOOD_MAP = {
     BOOTING: 'idle',
@@ -191,7 +192,8 @@ const App = () => {
     const handlePhoneNumberChange = (0, react_1.useCallback)((phoneNumber) => {
         dispatch({ type: 'SET_PHONE_NUMBER', phoneNumber });
     }, []);
-    const handleCallSergeant = (0, react_1.useCallback)(() => {
+    /** User submitted their phone number from the call overlay */
+    const handleSubmitNumber = (0, react_1.useCallback)(() => {
         if (!state.phoneNumber.trim())
             return;
         if (isDevMode) {
@@ -203,12 +205,16 @@ const App = () => {
         else {
             // Production: send to extension host → backend POST /call/initiate
             (0, bridge_1.callSergeant)(state.phoneNumber, {
-                bugType: 'null pointer',
+                bugType: 'unknown bug',
                 failCount: state.attemptCount,
                 lastError: state.resultMessage,
             });
         }
     }, [isDevMode, state.phoneNumber, state.attemptCount, state.resultMessage]);
+    /** Dismiss the call overlay (after call ended or on error) */
+    const handleDismissCall = (0, react_1.useCallback)(() => {
+        dispatch({ type: 'CALL_DISMISSED' });
+    }, []);
     // --- Derived state ---
     const mood = MOOD_MAP[state.uiState];
     const isEditorReadOnly = state.uiState !== 'IDLE';
@@ -219,8 +225,8 @@ const App = () => {
     ]
         .filter(Boolean)
         .join(' ');
-    return ((0, jsx_runtime_1.jsxs)("div", { className: rootClasses, children: [state.uiState === 'BOOTING' && (0, jsx_runtime_1.jsx)(BootScreen_1.default, {}), state.uiState !== 'BOOTING' && ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(TopBar_1.default, { uiState: state.uiState, mood: mood, timeLeftSec: timeLeftSec }), (0, jsx_runtime_1.jsx)(MissionLayout_1.default, { code: state.code, onCodeChange: handleCodeChange, readOnly: isEditorReadOnly, uiState: state.uiState, dialogueLog: state.dialogueLog, punishment: state.punishment, showPunishment: state.uiState === 'RESULT_FAIL', onSubmit: handleSubmit, onRetry: handleRetry, onNextMission: handleNextMission, callStatus: state.callStatus, callError: state.callError, phoneNumber: state.phoneNumber, onPhoneNumberChange: handlePhoneNumberChange, onCallSergeant: handleCallSergeant })] })), state.uiState === 'ANALYZING' && (0, jsx_runtime_1.jsx)(AnalyzingOverlay_1.default, {}), (state.uiState === 'RESULT_PASS' ||
-                state.uiState === 'MISSION_COMPLETE') && ((0, jsx_runtime_1.jsx)(PassScreen_1.default, { message: state.resultMessage, uiState: state.uiState, onNextMission: handleNextMission })), effects.confetti && (0, jsx_runtime_1.jsx)(EffectsLayer_1.default, { type: "confetti" })] }));
+    return ((0, jsx_runtime_1.jsxs)("div", { className: rootClasses, children: [state.uiState === 'BOOTING' && (0, jsx_runtime_1.jsx)(BootScreen_1.default, {}), state.uiState !== 'BOOTING' && ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(TopBar_1.default, { uiState: state.uiState, mood: mood, timeLeftSec: timeLeftSec }), (0, jsx_runtime_1.jsx)(MissionLayout_1.default, { code: state.code, onCodeChange: handleCodeChange, readOnly: isEditorReadOnly, uiState: state.uiState, dialogueLog: state.dialogueLog, punishment: state.punishment, showPunishment: state.uiState === 'RESULT_FAIL', onSubmit: handleSubmit, onRetry: handleRetry, onNextMission: handleNextMission })] })), state.uiState === 'ANALYZING' && (0, jsx_runtime_1.jsx)(AnalyzingOverlay_1.default, {}), (state.uiState === 'RESULT_PASS' ||
+                state.uiState === 'MISSION_COMPLETE') && ((0, jsx_runtime_1.jsx)(PassScreen_1.default, { message: state.resultMessage, uiState: state.uiState, onNextMission: handleNextMission })), effects.confetti && (0, jsx_runtime_1.jsx)(EffectsLayer_1.default, { type: "confetti" }), (0, jsx_runtime_1.jsx)(CallPanel_1.default, { callStatus: state.callStatus, callError: state.callError, phoneNumber: state.phoneNumber, onPhoneNumberChange: handlePhoneNumberChange, onSubmitNumber: handleSubmitNumber, onDismiss: handleDismissCall })] }));
 };
 exports.default = App;
 //# sourceMappingURL=App.js.map

@@ -33,6 +33,7 @@ import MissionLayout from './components/MissionLayout';
 import AnalyzingOverlay from './components/AnalyzingOverlay';
 import PassScreen from './components/PassScreen';
 import EffectsLayer from './components/EffectsLayer';
+import CallPanel from './components/CallPanel';
 
 /** Maps each UI state to the sergeant's mood */
 const MOOD_MAP: Record<UIState, SergeantMood> = {
@@ -209,7 +210,8 @@ const App: React.FC = () => {
     dispatch({ type: 'SET_PHONE_NUMBER', phoneNumber });
   }, []);
 
-  const handleCallSergeant = useCallback(() => {
+  /** User submitted their phone number from the call overlay */
+  const handleSubmitNumber = useCallback(() => {
     if (!state.phoneNumber.trim()) return;
     if (isDevMode) {
       // Simulate call flow in dev mode
@@ -219,12 +221,17 @@ const App: React.FC = () => {
     } else {
       // Production: send to extension host → backend POST /call/initiate
       callSergeant(state.phoneNumber, {
-        bugType: 'null pointer',
+        bugType: 'unknown bug',
         failCount: state.attemptCount,
         lastError: state.resultMessage,
       });
     }
   }, [isDevMode, state.phoneNumber, state.attemptCount, state.resultMessage]);
+
+  /** Dismiss the call overlay (after call ended or on error) */
+  const handleDismissCall = useCallback(() => {
+    dispatch({ type: 'CALL_DISMISSED' });
+  }, []);
 
   // --- Derived state ---
   const mood = MOOD_MAP[state.uiState];
@@ -258,11 +265,6 @@ const App: React.FC = () => {
             onSubmit={handleSubmit}
             onRetry={handleRetry}
             onNextMission={handleNextMission}
-            callStatus={state.callStatus}
-            callError={state.callError}
-            phoneNumber={state.phoneNumber}
-            onPhoneNumberChange={handlePhoneNumberChange}
-            onCallSergeant={handleCallSergeant}
           />
         </>
       )}
@@ -282,6 +284,16 @@ const App: React.FC = () => {
 
       {/* Confetti particle burst on pass */}
       {effects.confetti && <EffectsLayer type="confetti" />}
+
+      {/* Phone call overlay — blocks UI when the backend requests a call */}
+      <CallPanel
+        callStatus={state.callStatus}
+        callError={state.callError}
+        phoneNumber={state.phoneNumber}
+        onPhoneNumberChange={handlePhoneNumberChange}
+        onSubmitNumber={handleSubmitNumber}
+        onDismiss={handleDismissCall}
+      />
     </div>
   );
 };

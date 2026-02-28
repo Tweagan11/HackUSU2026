@@ -91,6 +91,9 @@ export function createMessageListener(
       case 'RESULT_PASS':
         dispatch({ type: 'RESULT_PASS', message: message.message });
         break;
+      case 'CALL_REQUESTED':
+        dispatch({ type: 'CALL_REQUESTED' });
+        break;
       case 'CALL_INITIATED':
         dispatch({ type: 'CALL_INITIATED', callId: message.callId });
         break;

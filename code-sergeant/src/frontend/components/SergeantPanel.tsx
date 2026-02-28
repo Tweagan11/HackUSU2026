@@ -1,9 +1,8 @@
 import React from 'react';
-import type { UIState, CallStatus, DialogueEntry } from '../types';
+import type { UIState, DialogueEntry } from '../types';
 import DialogueLog from './DialogueLog';
 import PunishmentBox from './PunishmentBox';
 import ActionButton from './ActionButton';
-import CallPanel from './CallPanel';
 
 interface SergeantPanelProps {
   uiState: UIState;
@@ -13,17 +12,12 @@ interface SergeantPanelProps {
   onSubmit: () => void;
   onRetry: () => void;
   onNextMission: () => void;
-  /** Phone call props */
-  callStatus: CallStatus;
-  callError: string;
-  phoneNumber: string;
-  onPhoneNumberChange: (phone: string) => void;
-  onCallSergeant: () => void;
 }
 
 /**
  * Sergeant command panel (right 30%).
- * Vertical stack: dialogue log → punishment box → call panel → action button.
+ * Vertical stack: dialogue log → punishment box → action button.
+ * (Phone call overlay is rendered at the App root level.)
  */
 const SergeantPanel: React.FC<SergeantPanelProps> = ({
   uiState,
@@ -33,11 +27,6 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
   onSubmit,
   onRetry,
   onNextMission,
-  callStatus,
-  callError,
-  phoneNumber,
-  onPhoneNumberChange,
-  onCallSergeant,
 }) => {
   return (
     <div className="sergeant-panel">
@@ -46,15 +35,6 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
       </div>
       <div className="sergeant-panel__punishment">
         <PunishmentBox punishment={punishment} visible={showPunishment} />
-      </div>
-      <div className="sergeant-panel__call">
-        <CallPanel
-          callStatus={callStatus}
-          callError={callError}
-          phoneNumber={phoneNumber}
-          onPhoneNumberChange={onPhoneNumberChange}
-          onCallSergeant={onCallSergeant}
-        />
       </div>
       <div className="sergeant-panel__action">
         <ActionButton

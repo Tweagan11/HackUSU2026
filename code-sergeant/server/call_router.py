@@ -131,10 +131,10 @@ def _generate_sergeant_followup(user_speech: str, session: dict) -> str:
         return "SILENCE?! That's not an answer, recruit! Drop and give me 20!"
 
     followups = [
-        f"You said '{user_speech}'?! That's the best excuse you've got, recruit?!",
-        f"'{user_speech}'... I've heard better explanations from a rubber duck!",
-        f"Is that code-speak for 'I have no idea', recruit?! '{user_speech}' means NOTHING to me!",
-        f"'{user_speech}'?! In MY army, we FIX bugs, we don't TALK to them!",
+        f"You said {user_speech}?! That's the best excuse you've got, recruit?!",
+        f"{user_speech}... I've heard better explanations from a rubber duck!",
+        f"Is that code-speak for 'I have no idea', recruit?! {user_speech} means NOTHING to me!",
+        f"{user_speech}?! In MY army, we FIX bugs, we don't TALK to them!",
         f"Roger that, recruit. '{user_speech}'. Now translate that into WORKING CODE!",
     ]
     return random.choice(followups)
