@@ -204,7 +204,31 @@ async def submit(data: dict):
     drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
     mark_state_changed()
     await broadcast_state()
-    return {"ok": True, "is_correct": is_correct, "feedback": feedback, "state": drill_state}
+    # Pull LLM-driven punishment data from the agent state (if any)
+    punishment_text = None
+    punishment_phrase = None
+    punishment_reps = None
+    if agent and not is_correct:
+        try:
+            snapshot = agent.agent.get_state(agent.config)
+            full = snapshot.values if snapshot else {}
+            punishment_text = full.get("punishment") or None
+            punishment_phrase = full.get("punishment_phrase") or None
+            punishment_reps = full.get("punishment_reps") or None
+            if punishment_reps == 0:
+                punishment_reps = None
+        except Exception as e:
+            print(f"[submit] Could not read punishment state: {e}", flush=True)
+
+    return {
+        "ok": True,
+        "is_correct": is_correct,
+        "feedback": feedback,
+        "punishment": punishment_text,
+        "punishment_phrase": punishment_phrase,
+        "punishment_reps": punishment_reps,
+        "state": drill_state,
+    }
   
 @app.post("/timeout")
 async def timeout():

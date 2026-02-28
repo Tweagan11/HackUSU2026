@@ -193,9 +193,20 @@ def make_grade_solution(model):
     return grade_solution
 
 
-def make_punish_node(punishment_tool, email_tool=None, phonecall_tool=None):
-    """Returns a punish node that calls the punishment tool directly and loops back."""
+def make_punish_node(punishment_tool, email_tool=None, phonecall_tool=None, write_lines_tool=None):
+    """Returns a punish node that calls the punishment tool directly and loops back.
+    The write_lines_tool is offered to an LLM so it can DECIDE whether to assign write-lines."""
+
+    # Small model with write_lines bound as a tool so the LLM can choose to call it
+    if write_lines_tool:
+        from langchain.chat_models import init_chat_model
+        from langchain_core.messages import SystemMessage as _SM, HumanMessage as _HM
+        _punish_model = init_chat_model("openai:gpt-4.1-nano").bind_tools([write_lines_tool])
+    else:
+        _punish_model = None
+
     def punish(state: dict):
+        import json as _json
         print("I am being punished", flush=True)
         grade = state.get("grade")
         feedback = grade.feedback if hasattr(grade, "feedback") else str(grade)
@@ -211,6 +222,45 @@ def make_punish_node(punishment_tool, email_tool=None, phonecall_tool=None):
         result = punishment_tool.invoke({"query": f"Fail #{fail_count}. {feedback}"})
         print(f"\n=== PUNISHMENT ===", flush=True)
         print(result, flush=True)
+
+        # Let the LLM decide whether to also assign a write-lines punishment
+        punishment_phrase = ""
+        punishment_reps = 0
+        if _punish_model and write_lines_tool:
+            try:
+                decision = _punish_model.invoke([
+                    _SM(content=(
+                        "You are SERGEANT DEBUGGER deciding whether a recruit deserves EXTRA punishment. "
+                        "You have a tool called 'write_lines_tool' that forces the recruit to type a phrase "
+                        "repeatedly before they can retry. Use it ONLY when:\n"
+                        "- The recruit has failed multiple times (fail_count >= 2)\n"
+                        "- The mistake is particularly stupid or careless\n"
+                        "- They clearly aren't learning from previous attempts\n"
+                        "Do NOT use it on the first failure — give them a chance first. "
+                        "If you decide to use it, make the phrase relevant to their specific mistake. "
+                        "Scale reps from 3 (minor) to 15 (egregious). "
+                        "If the recruit doesn't deserve it, just respond with a short acknowledgment."
+                    )),
+                    _HM(content=(
+                        f"Failure #{fail_count}. Feedback: {feedback}"
+                    )),
+                ])
+                # Check if the LLM decided to call the write_lines_tool
+                if decision.tool_calls:
+                    for tc in decision.tool_calls:
+                        if tc["name"] == "write_lines_tool":
+                            tool_result = write_lines_tool.invoke(tc["args"])
+                            parsed = _json.loads(tool_result)
+                            punishment_phrase = parsed.get("phrase", "")
+                            punishment_reps = parsed.get("reps", 0)
+                            print(f"\n=== WRITE LINES ASSIGNED ===", flush=True)
+                            print(f"  Phrase: {punishment_phrase}", flush=True)
+                            print(f"  Reps: {punishment_reps}", flush=True)
+                            break
+                else:
+                    print("\n=== NO WRITE LINES (LLM chose not to) ===", flush=True)
+            except Exception as e:
+                print(f"\n=== WRITE LINES DECISION ERROR: {e} ===", flush=True)
 
         # Send punishment email to the recruit's BOSS
         if email_tool:
@@ -250,5 +300,9 @@ def make_punish_node(punishment_tool, email_tool=None, phonecall_tool=None):
                 print(f"\n=== PHONE CALL ===", flush=True)
                 print(call_result, flush=True)
 
-        return {"punishment": result}
+        return {
+            "punishment": result,
+            "punishment_phrase": punishment_phrase,
+            "punishment_reps": punishment_reps,
+        }
     return punish
