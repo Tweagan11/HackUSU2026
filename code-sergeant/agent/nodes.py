@@ -1,6 +1,7 @@
 from langchain.messages import SystemMessage, ToolMessage
 from langchain_core.messages import SystemMessage
 from pydantic import BaseModel
+from langgraph.types import interrupt
 
 
 class Bug(BaseModel):
@@ -108,3 +109,37 @@ def make_generate_challenge(model):
         return {"challenge": response}
 
     return generate_challenge
+
+
+def wait_for_user(state: dict):
+    """Pauses the graph and waits for the user to submit their solution."""
+    challenge = state.get("challenge")
+    instructions = challenge.instructions if challenge else "Fix the bug in the code."
+    user_solution = interrupt(instructions)
+    return {"user_solution": user_solution}
+
+
+def make_grade_solution(model):
+    """Returns a grade_solution node that evaluates the user's submitted solution."""
+
+    def grade_solution(state: dict):
+        """Grades the user's solution against the challenge."""
+        challenge = state.get("challenge")
+        user_solution = state.get("user_solution", "")
+
+        response = model.invoke(
+            [
+                SystemMessage(
+                    content=(
+                        "You are a programming tutor grading a student's solution. "
+                        "Given the original buggy challenge and the student's fix, "
+                        "explain whether the solution is correct and why. Be concise and encouraging."
+                        f"\n\nOriginal buggy code:\n{challenge.code if challenge else 'N/A'}"
+                        f"\n\nStudent's solution:\n{user_solution}"
+                    )
+                )
+            ]
+        )
+        return {"grade": response.content}
+
+    return grade_solution

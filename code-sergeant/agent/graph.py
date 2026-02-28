@@ -6,77 +6,109 @@ from dotenv import load_dotenv
 from tools import get_rag_tool
 from utils import build_vector_store
 from state import ExtendedState
-from nodes import make_llm_call, make_tool_node, make_extract_bugs, make_generate_challenge
+from langgraph.checkpoint.memory import MemorySaver
+from nodes import make_llm_call, make_tool_node, make_extract_bugs, make_generate_challenge, wait_for_user, make_grade_solution
 from IPython.display import Image, display
 
 
-def should_continue(state: ExtendedState) -> Literal["tool_node", "extract_bugs"]:
-    """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
+class Agent:
 
-    messages = state["messages"]
-    last_message = messages[-1]
+    def __init__(self, path):
+        # Loading API keys
+        load_dotenv("../../")
 
-    # If the LLM makes a tool call, then perform an action
-    if last_message.tool_calls:
-        return "tool_node"
+        print("Build vector store")
+        build_vector_store(path)
+        tool = get_rag_tool()
 
-    # Otherwise, extract structured bugs
-    return "extract_bugs"
+        model = init_chat_model(
+            "openai:o4-mini",
+        )
+        model_with_tools = model.bind_tools([tool])
 
+        llm_call = make_llm_call(model_with_tools)
+        tool_node = make_tool_node([tool])
+        extract_bugs = make_extract_bugs(model)
+        generate_challenge = make_generate_challenge(model)
+        grade_solution = make_grade_solution(model)
 
-load_dotenv("../../")
+        print("Initialize agent")
+        agent_builder = StateGraph(ExtendedState)
 
-print("Build vector store")
-# For testing
-build_vector_store("../../buggy_code")
-tool = get_rag_tool()
+        agent_builder.add_node("llm_call", llm_call)
+        agent_builder.add_node("tool_node", tool_node)
+        agent_builder.add_node("extract_bugs", extract_bugs)
+        agent_builder.add_node("generate_challenge", generate_challenge)
+        agent_builder.add_node("wait_for_user", wait_for_user)
+        agent_builder.add_node("grade_solution", grade_solution)
 
-model = init_chat_model(
-    "openai:o4-mini",
-)
-model_with_tools = model.bind_tools([tool])
+        agent_builder.add_edge(START, "llm_call")
+        agent_builder.add_conditional_edges(
+            "llm_call",
+            self.should_continue,
+            ["tool_node", "extract_bugs"]
+        )
+        agent_builder.add_edge("tool_node", "llm_call")
+        agent_builder.add_edge("extract_bugs", "generate_challenge")
+        agent_builder.add_edge("generate_challenge", "wait_for_user")
+        agent_builder.add_edge("wait_for_user", "grade_solution")
+        agent_builder.add_edge("grade_solution", END)
 
-llm_call = make_llm_call(model_with_tools)
-tool_node = make_tool_node([tool])
-extract_bugs = make_extract_bugs(model)
-generate_challenge = make_generate_challenge(model)
+        print("Compiling agent")
+        self.agent = agent_builder.compile(checkpointer=MemorySaver())
+        self.config = {"configurable": {"thread_id": "1"}}
 
-print("Initialize agent")
-agent_builder = StateGraph(ExtendedState)
+    @staticmethod
+    def should_continue(state: ExtendedState) -> Literal["tool_node", "extract_bugs"]:
+        """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tool_node"
+        return "extract_bugs"
 
-agent_builder.add_node("llm_call", llm_call)
-agent_builder.add_node("tool_node", tool_node)
-agent_builder.add_node("extract_bugs", extract_bugs)
-agent_builder.add_node("generate_challenge", generate_challenge)
+    def run(self, prompt: str = "Use a tool to look through the files and find the bug."):
+        import json
+        from langchain.messages import HumanMessage
 
-agent_builder.add_edge(START, "llm_call")
-agent_builder.add_conditional_edges(
-    "llm_call",
-    should_continue,
-    ["tool_node", "extract_bugs"]
-)
-agent_builder.add_edge("tool_node", "llm_call")
-agent_builder.add_edge("extract_bugs", "generate_challenge")
-agent_builder.add_edge("generate_challenge", END)
+        print("Display the agent flow")
+        display(Image(self.agent.get_graph(xray=True).draw_mermaid_png()))
+        print(self.agent.get_graph().draw_ascii())
 
-print("Compiling agent")
-agent = agent_builder.compile()
+        # Run until the interrupt in wait_for_user
+        result = self.agent.invoke(
+            {"messages": [HumanMessage(content=prompt)]},
+            config=self.config
+        )
 
-print("Display the agent flow")
-# Show the agent
-display(Image(agent.get_graph(xray=True).draw_mermaid_png()))
-print(agent.get_graph().draw_ascii())
+        for m in result["messages"]:
+            m.pretty_print()
 
-import json
-from langchain.messages import HumanMessage
-result = agent.invoke({"messages": [HumanMessage(content="Use a tool to look through the files and find the bug.")]})
+        challenge = result.get("challenge")
+        if challenge:
+            print("\n=== Coding Challenge ===")
+            print(json.dumps(challenge.model_dump(), indent=2))
 
-for m in result["messages"]:
-    m.pretty_print()
+        return result
 
-challenge = result.get("challenge")
-if challenge:
-    print("\n=== Coding Challenge ===")
-    print(json.dumps(challenge.model_dump(), indent=2))
-else:
-    print("No challenge generated.")
+    # Callable method designed for FastAPI server to resume flow at 
+    def resume(self, user_solution: str):
+        from langgraph.types import Command
+
+        result = self.agent.invoke(
+            Command(resume=user_solution),
+            config=self.config
+        )
+
+        print("\n=== Grade ===")
+        print(result.get("grade", "No grade returned."))
+
+        return result
+
+    
+
+if __name__ == "__main__":
+    agent = Agent("../../buggy_code")
+    agent.run()
+    user_solution = input("\nYour solution:\n")
+    agent.resume(user_solution)
