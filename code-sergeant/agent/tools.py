@@ -2,7 +2,7 @@ import os
 
 from langchain_core.tools import tool
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 from utils import *
 
 #Define tools
@@ -35,8 +35,7 @@ def create_punishment_tool():
         # Create a small sub-prompt
         prompt = [
             SystemMessage(content="You are a creative assistant tasked with generating humorous punishments for coding errors."),
-            # user query goes as user content
-            SystemMessage(content=f"Context: {query}")
+            HumanMessage(content=f"Context: {query}")
         ]
         response = tool_model.invoke(prompt)
 
@@ -56,7 +55,9 @@ def create_phonecall_tool():
         """
         import requests as http_requests
 
-        server_url = os.getenv("SERVER_URL", "http://localhost:8000")
+        # Prefer PUBLIC_BASE_URL (set by ngrok in main.py), fall back to local server
+        server_url = os.getenv("PUBLIC_BASE_URL") or os.getenv("SERVER_URL", "http://localhost:8000")
+        print(f"[phonecall_tool] Using server_url: {server_url}", flush=True)
         payload = {
             "phone_number": number,
             "context": {
@@ -76,3 +77,40 @@ def create_phonecall_tool():
         except Exception as e:
             return f"Error initiating call: {e}"
     return phonecall_tool
+
+
+def create_email_tool():
+    @tool
+    def email_tool(to: str, subject: str, body: str) -> str:
+        """Send an email from Sergeant Debugger to the recruit.
+
+        Args:
+            to: recipient email address.
+            subject: email subject line.
+            body: the email body text.
+        """
+        import smtplib
+        from email.mime.text import MIMEText
+
+        sender = os.getenv("EMAIL_ADDRESS")
+        password = os.getenv("EMAIL_APP_PASSWORD")
+        smtp_host = os.getenv("EMAIL_SMTP_HOST", "smtp.gmail.com")
+        smtp_port = int(os.getenv("EMAIL_SMTP_PORT", "587"))
+
+        if not sender or not password:
+            return "Email not configured. Set EMAIL_ADDRESS and EMAIL_APP_PASSWORD in .env"
+
+        msg = MIMEText(body)
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = to
+
+        try:
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(sender, password)
+                server.send_message(msg)
+            return f"Email sent successfully to {to}!"
+        except Exception as e:
+            return f"Error sending email: {e}"
+    return email_tool
