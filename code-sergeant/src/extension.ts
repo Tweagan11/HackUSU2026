@@ -1,156 +1,712 @@
 import * as vscode from 'vscode';
+import * as cp from 'child_process';
+import * as path from 'path';
+import * as net from 'net';
 
-const API_BASE = 'localhost:8000'; // 🔧 change this
+/* ------------------------------------------------------------------ */
+/*  Module-level state                                                 */
+/* ------------------------------------------------------------------ */
 
-interface Challenge {
-  code: string;
-  file: string;
-  line: number;
-  countdownSeconds: number;
+let serverProcess: cp.ChildProcess | null = null;
+let currentPanel: vscode.WebviewPanel | null = null;
+let panelLockEnabled = false;
+let lastServerUrl: string | null = null;
+let lastAutoTriggerAt = 0;
+let backendPollTimer: ReturnType<typeof setInterval> | null = null;
+let persistedPanelState: PersistedPanelState | null = null;
+
+const AUTO_TRIGGER_DEBOUNCE_MS = 1500;
+const PANEL_STATE_KEY = 'codeSergeant.panelState';
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+
+interface DrillState {
+  animation: string;
+  successCriteria: number;
+  isComplete: boolean;
+  message: string;
+  updatedAt: string | null;
 }
 
-interface CheckResult {
-  solved: boolean;
+interface StartResponsePayload {
+  state: DrillState;
 }
 
-interface PunishmentResult {
-  punishment: string;
+interface PersistedPanelState {
+  version: 1;
+  appState: unknown;
+  timeLeftSec: number;
+  savedAt: number;
 }
 
-export function activate(context: vscode.ExtensionContext) {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type WebviewMessage = Record<string, any>;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
-  const disposable = vscode.commands.registerCommand('code-sergeant.drill', async () => {
+/* ------------------------------------------------------------------ */
+/*  Activation                                                         */
+/* ------------------------------------------------------------------ */
 
-    const res = await fetch(`${API_BASE}/challenge`);
-    const challenge = await res.json() as Challenge;
+export function activate(context: vscode.ExtensionContext): void {
+  persistedPanelState = parsePersistedPanelState(
+    context.workspaceState.get(PANEL_STATE_KEY)
+  );
 
-    const panel = vscode.window.createWebviewPanel(
-      'codeSargeant',
-      '🪖 CODE SERGEANT',
-      vscode.ViewColumn.One,
-      { enableScripts: true }
-    );
+  const disposable = vscode.commands.registerCommand(
+    'code-sergeant.drill',
+    async () => {
+      await openSergeantWorkflow(context, 'manual');
+    }
+  );
 
-    panel.webview.html = getWebviewHTML(challenge.code, challenge.countdownSeconds);
-
-    const pollInterval = setInterval(async () => {
-      const checkRes = await fetch(`${API_BASE}/check`);
-      const { solved } = await checkRes.json() as CheckResult;
-
-      if (solved) {
-        clearInterval(pollInterval);
-        panel.dispose();
-
-        const fileUri = vscode.Uri.file(challenge.file);
-        const doc = await vscode.workspace.openTextDocument(fileUri);
-        const editor = await vscode.window.showTextDocument(doc);
-        const position = new vscode.Position(challenge.line - 1, 0);
-        editor.selection = new vscode.Selection(position, position);
-        editor.revealRange(new vscode.Range(position, position));
+  const terminalExecutionListener =
+    vscode.window.onDidStartTerminalShellExecution((event) => {
+      const commandLine = event.execution.commandLine.value;
+      if (!shouldAutoTriggerForCommand(commandLine)) {
+        return;
       }
-    }, 2000);
-
-    panel.webview.onDidReceiveMessage(async message => {
-      if (message.command === 'countdownExpired') {
-        clearInterval(pollInterval);
-
-        const punishRes = await fetch(`${API_BASE}/punishment`);
-        const { punishment } = await punishRes.json() as PunishmentResult;
-
-        panel.webview.postMessage({ command: 'punish', text: punishment });
-      }
+      triggerSergeantIfNeeded(context, `terminal:${commandLine}`);
     });
 
-    panel.onDidDispose(() => clearInterval(pollInterval));
+  const debugSessionListener = vscode.debug.onDidStartDebugSession(() => {
+    triggerSergeantIfNeeded(context, 'debug');
   });
 
-  context.subscriptions.push(disposable);
+  context.subscriptions.push(
+    disposable,
+    terminalExecutionListener,
+    debugSessionListener
+  );
 }
 
-function getWebviewHTML(code: string, seconds: number): string {
-  return `<!DOCTYPE html>
+/* ------------------------------------------------------------------ */
+/*  Workflow entry-point                                               */
+/* ------------------------------------------------------------------ */
+
+function triggerSergeantIfNeeded(
+  context: vscode.ExtensionContext,
+  reason: string
+): void {
+  const now = Date.now();
+  if (now - lastAutoTriggerAt < AUTO_TRIGGER_DEBOUNCE_MS) {
+    return;
+  }
+  lastAutoTriggerAt = now;
+  void openSergeantWorkflow(context, reason);
+}
+
+async function openSergeantWorkflow(
+  context: vscode.ExtensionContext,
+  reason: string
+): Promise<void> {
+  try {
+    if (currentPanel) {
+      // Force a full restart so latest frontend bundle/state is loaded.
+      panelLockEnabled = false;
+      currentPanel.dispose();
+      currentPanel = null;
+      stopBackendPolling();
+      killServer();
+      lastServerUrl = null;
+    }
+
+    console.log(`[Code Sergeant] Triggered by ${reason}`);
+    const port = await findAvailablePort();
+    const serverUrl = `http://127.0.0.1:${port}`;
+    await startServer(context, port);
+    await waitForServer(`${serverUrl}/health`);
+
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    const workspacePayload = {
+      files: workspaceFolders.map((f) => f.uri.fsPath),
+    };
+
+    const startResponse = await fetch(`${serverUrl}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workspacePayload),
+    });
+
+    if (!startResponse.ok) {
+      throw new Error(
+        `Server returned ${startResponse.status} ${startResponse.statusText}`
+      );
+    }
+
+    const startPayload =
+      (await startResponse.json()) as Partial<StartResponsePayload>;
+    if (
+      !startPayload ||
+      typeof startPayload !== 'object' ||
+      !startPayload.state ||
+      typeof startPayload.state !== 'object'
+    ) {
+      throw new Error('Server returned an invalid start payload');
+    }
+
+    await clearPersistedPanelState(context);
+    panelLockEnabled = true;
+    lastServerUrl = serverUrl;
+    createOrRevealLockedPanel(context);
+    startBackendPolling(serverUrl);
+  } catch (error) {
+    panelLockEnabled = false;
+    stopBackendPolling();
+    killServer();
+    const msg = error instanceof Error ? error.message : String(error);
+    void vscode.window.showErrorMessage(
+      `Code Sergeant failed to start: ${msg}`
+    );
+  }
+}
+
+async function clearPersistedPanelState(
+  context: vscode.ExtensionContext
+): Promise<void> {
+  persistedPanelState = null;
+  await context.workspaceState.update(PANEL_STATE_KEY, undefined);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Auto-trigger helpers                                               */
+/* ------------------------------------------------------------------ */
+
+function shouldAutoTriggerForCommand(rawCommandLine: string): boolean {
+  const commandLine = stripLeadingEnvAssignments(rawCommandLine)
+    .trim()
+    .toLowerCase();
+  if (!commandLine) {
+    return false;
+  }
+
+  const runPatterns = [
+    /^python(3(\.\d+)?)?\s+\S+\.py(\s|$)/,
+    /^node\s+\S+\.(js|cjs|mjs)(\s|$)/,
+    /^ts-node\s+\S+\.ts(\s|$)/,
+    /^go\s+run(\s|$)/,
+    /^cargo\s+run(\s|$)/,
+    /^java(\s|$)/,
+    /^dotnet\s+run(\s|$)/,
+    /^(npm|pnpm|yarn|bun)\s+(run\s+)?(start|dev|test|build)(\s|$)/,
+  ];
+
+  return runPatterns.some((p) => p.test(commandLine));
+}
+
+function stripLeadingEnvAssignments(commandLine: string): string {
+  let remaining = commandLine.trimStart();
+  const envAssignment =
+    /^[a-z_][a-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]+)\s*/i;
+  while (envAssignment.test(remaining)) {
+    const match = remaining.match(envAssignment);
+    if (!match) {
+      break;
+    }
+    remaining = remaining.slice(match[0].length).trimStart();
+  }
+  return remaining;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Python server management                                           */
+/* ------------------------------------------------------------------ */
+
+async function startServer(
+  context: vscode.ExtensionContext,
+  port: number
+): Promise<void> {
+  killServer();
+
+  const serverPath = path.join(context.extensionPath, 'server', 'main.py');
+  serverProcess = cp.spawn('python3', [serverPath], {
+    cwd: path.dirname(serverPath),
+    env: {
+      ...process.env,
+      CODE_SERGEANT_PORT: String(port),
+      PYTHONUNBUFFERED: '1',
+    },
+    stdio: 'pipe',
+  });
+
+  serverProcess.stdout?.on('data', (data: Buffer) => {
+    console.log(`[Code Sergeant server] ${data.toString().trimEnd()}`);
+  });
+
+  serverProcess.stderr?.on('data', (data: Buffer) => {
+    console.error(`[Code Sergeant server] ${data.toString().trimEnd()}`);
+  });
+
+  serverProcess.on('error', (err: Error) => {
+    console.error('[Code Sergeant server] process error:', err);
+  });
+}
+
+async function findAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      srv.close((err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        if (!port) {
+          reject(new Error('Failed to find an open port'));
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Webview panel                                                      */
+/* ------------------------------------------------------------------ */
+
+function createOrRevealLockedPanel(
+  context: vscode.ExtensionContext
+): void {
+  if (currentPanel) {
+    currentPanel.reveal(vscode.ViewColumn.Active);
+    return;
+  }
+
+  currentPanel = vscode.window.createWebviewPanel(
+    'codeSergeant',
+    'Code Sergeant',
+    vscode.ViewColumn.Active,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, 'media'),
+      ],
+    }
+  );
+
+  currentPanel.webview.html = getWebviewHtml(
+    currentPanel.webview,
+    context.extensionUri,
+    persistedPanelState
+  );
+
+  currentPanel.webview.onDidReceiveMessage(
+    (message: WebviewMessage) => void handleWebviewMessage(message, context)
+  );
+
+  currentPanel.onDidDispose(() => {
+    currentPanel = null;
+    if (panelLockEnabled && lastServerUrl) {
+      setTimeout(() => createOrRevealLockedPanel(context), 50);
+      return;
+    }
+    stopBackendPolling();
+    killServer();
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Message handler (extracted for clarity)                            */
+/* ------------------------------------------------------------------ */
+
+async function handleWebviewMessage(
+  message: WebviewMessage,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  // --- SAVE_STATE ---
+  if (message.type === 'SAVE_STATE') {
+    const state = parsePersistedPanelState(message.payload);
+    if (state) {
+      persistedPanelState = state;
+      void context.workspaceState.update(PANEL_STATE_KEY, state);
+    }
+    return;
+  }
+
+  if (!lastServerUrl) {
+    return;
+  }
+
+  const serverUrl = lastServerUrl;
+
+  // --- SUBMIT_CODE ---
+  if (message.type === 'SUBMIT_CODE') {
+    try {
+      const code: string = message.payload?.code ?? '';
+      const resp = await fetch(`${serverUrl}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, response: code }),
+      });
+      if (!resp.ok) {
+        throw new Error(`Submit failed: ${resp.status} ${resp.statusText}`);
+      }
+    } catch {
+      currentPanel?.webview.postMessage({
+        type: 'RESULT_FAIL',
+        message: 'Failed to submit code to backend.',
+      });
+    }
+    return;
+  }
+
+  // --- MISSION_TIMEOUT ---
+  if (message.type === 'MISSION_TIMEOUT') {
+    try {
+      const resp = await fetch(`${serverUrl}/timeout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!resp.ok) {
+        throw new Error(`Timeout failed: ${resp.status} ${resp.statusText}`);
+      }
+      const payload = (await resp.json()) as {
+        message?: string;
+        punishment?: string;
+      };
+      currentPanel?.webview.postMessage({
+        type: 'RESULT_FAIL',
+        message: payload.message ?? 'Time expired.',
+        punishment: payload.punishment,
+      });
+    } catch {
+      currentPanel?.webview.postMessage({
+        type: 'RESULT_FAIL',
+        message: 'Time expired. Punishment protocol unavailable.',
+        punishment: 'DROP AND GIVE ME 20 SEMICOLONS!',
+      });
+    }
+    return;
+  }
+
+  // --- CALL_SERGEANT ---
+  if (message.type === 'CALL_SERGEANT') {
+    const phoneNumber: string = message.payload?.phoneNumber ?? '';
+    const callContext = message.payload?.context ?? {};
+    try {
+      const resp = await fetch(`${serverUrl}/call/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone_number: phoneNumber,
+          context: {
+            bug_type: callContext.bugType ?? 'unknown bug',
+            fail_count: callContext.failCount ?? 0,
+            last_error: callContext.lastError ?? 'N/A',
+          },
+        }),
+      });
+
+      const payload = (await resp.json()) as {
+        ok: boolean;
+        call_id?: string;
+        error?: string;
+        details?: unknown;
+      };
+
+      if (payload.ok && payload.call_id) {
+        currentPanel?.webview.postMessage({
+          type: 'CALL_INITIATED',
+          callId: payload.call_id,
+        });
+        pollCallStatus(payload.call_id);
+      } else {
+        currentPanel?.webview.postMessage({
+          type: 'CALL_ERROR',
+          message: payload.error ?? 'Failed to initiate call.',
+        });
+      }
+    } catch (err) {
+      currentPanel?.webview.postMessage({
+        type: 'CALL_ERROR',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Failed to connect to call service.',
+      });
+    }
+    return;
+  }
+
+  // --- Legacy "submit" format ---
+  if (message.type === 'submit') {
+    try {
+      const resp = await fetch(`${serverUrl}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: message.payload ?? '' }),
+      });
+      if (!resp.ok) {
+        throw new Error(`Submit failed: ${resp.status} ${resp.statusText}`);
+      }
+    } catch {
+      currentPanel?.webview.postMessage({
+        type: 'error',
+        payload: { message: 'Failed to submit response to backend.' },
+      });
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Webview HTML                                                       */
+/* ------------------------------------------------------------------ */
+
+function getWebviewHtml(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  initialState: PersistedPanelState | null
+): string {
+  const scriptUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, 'media', 'webview.js')
+  );
+  const nonce = getNonce();
+  const serializedInitialState = JSON.stringify(initialState ?? null).replace(
+    /</g,
+    '\\u003c'
+  );
+
+  return /* html */ `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none';
+      script-src 'nonce-${nonce}';
+      style-src 'unsafe-inline';
+      font-src ${webview.cspSource} data:;
+      worker-src blob:;"
+  />
   <style>
-    body {
-      background: #1a0000;
-      color: #ff4444;
-      font-family: 'Courier New', monospace;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 30px;
-    }
-    h1 { font-size: 2.5em; color: #ff0000; text-shadow: 0 0 10px red; }
-    #sergeant { font-size: 5em; }
-    #countdown {
-      font-size: 3em;
-      color: #ff6600;
-      margin: 20px;
-      font-weight: bold;
-    }
-    pre {
-      background: #0d0d0d;
-      border: 2px solid #ff0000;
-      padding: 20px;
-      width: 80%;
-      overflow-x: auto;
-      font-size: 1em;
-      color: #ff9999;
-    }
-    #punishment {
-      display: none;
-      font-size: 1.5em;
-      color: #ff0000;
-      margin-top: 20px;
-      text-align: center;
-      animation: flash 0.5s infinite;
-    }
-    @keyframes flash {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
+    body, html { margin: 0; padding: 0; height: 100vh; overflow: hidden; }
   </style>
 </head>
 <body>
-  <div id="sergeant">🪖</div>
-  <h1>FIX THE BUG, SOLDIER!</h1>
-  <div id="countdown">${seconds}</div>
-  <pre><code>${escapeHtml(code)}</code></pre>
-  <div id="punishment"></div>
-
-  <script>
-    const vscode = acquireVsCodeApi();
-    let timeLeft = ${seconds};
-
-    const timer = setInterval(() => {
-      timeLeft--;
-      document.getElementById('countdown').textContent = timeLeft;
-
-      if (timeLeft <= 0) {
-        clearInterval(timer);
-        vscode.postMessage({ command: 'countdownExpired' });
-      }
-    }, 1000);
-
-    window.addEventListener('message', event => {
-      const msg = event.data;
-      if (msg.command === 'punish') {
-        document.getElementById('sergeant').textContent = '😤';
-        document.getElementById('punishment').style.display = 'block';
-        document.getElementById('punishment').textContent = msg.text;
-      }
-    });
+  <div id="root"></div>
+  <script nonce="${nonce}">
+    window.__CODE_SERGEANT_INITIAL_STATE__ = ${serializedInitialState};
   </script>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+/* ------------------------------------------------------------------ */
+/*  State persistence helpers                                          */
+/* ------------------------------------------------------------------ */
+
+function parsePersistedPanelState(
+  value: unknown
+): PersistedPanelState | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const candidate = value as Partial<PersistedPanelState>;
+  if (candidate.version !== 1) {
+    return null;
+  }
+  if (
+    typeof candidate.appState !== 'object' ||
+    candidate.appState === null
+  ) {
+    return null;
+  }
+  if (
+    typeof candidate.timeLeftSec !== 'number' ||
+    !Number.isFinite(candidate.timeLeftSec)
+  ) {
+    return null;
+  }
+  if (
+    typeof candidate.savedAt !== 'number' ||
+    !Number.isFinite(candidate.savedAt)
+  ) {
+    return null;
+  }
+  return {
+    version: 1,
+    appState: candidate.appState,
+    timeLeftSec: Math.max(0, Math.floor(candidate.timeLeftSec)),
+    savedAt: candidate.savedAt,
+  };
 }
 
-export function deactivate() {}
+/* ------------------------------------------------------------------ */
+/*  Backend real-time stream (HTTP polling — no WebSocket dependency)   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Polls the backend `/ws` endpoint via plain HTTP to get state updates.
+ * Node.js in VS Code does not expose a global WebSocket, so we use
+ * polling as a portable alternative.
+ */
+function startBackendPolling(serverUrl: string): void {
+  stopBackendPolling();
+
+  const pollUrl = `${serverUrl}/health`;
+  const pollIntervalMs = 3000;
+
+  backendPollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch(pollUrl);
+      if (!resp.ok) {
+        return;
+      }
+      const payload = (await resp.json()) as Record<string, unknown>;
+
+      // If the backend signals completion, relay to the front-end
+      if (payload.isComplete === true) {
+        currentPanel?.webview.postMessage({
+          type: 'RESULT_PASS',
+          message:
+            (typeof payload.message === 'string' && payload.message) ||
+            'Analysis complete.',
+        });
+      }
+
+      // Also relay as legacy update
+      currentPanel?.webview.postMessage({ type: 'update', payload });
+    } catch {
+      // Ignore transient network errors; the server may still be starting
+    }
+  }, pollIntervalMs);
+}
+
+function stopBackendPolling(): void {
+  if (backendPollTimer !== null) {
+    clearInterval(backendPollTimer);
+    backendPollTimer = null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Call status polling                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Poll the backend for call status updates.
+ * Sends CALL_IN_PROGRESS / CALL_ENDED to the webview.
+ * Stops after the call ends or ~2 minutes.
+ */
+function pollCallStatus(callId: string): void {
+  if (!lastServerUrl) {
+    return;
+  }
+
+  const serverUrl = lastServerUrl;
+  let attempts = 0;
+  const maxAttempts = 40; // ~2 min at 3 s intervals
+  const intervalMs = 3000;
+
+  const interval = setInterval(async () => {
+    attempts++;
+    if (attempts > maxAttempts || !lastServerUrl) {
+      clearInterval(interval);
+      return;
+    }
+
+    try {
+      const resp = await fetch(`${serverUrl}/call/status/${callId}`);
+      if (!resp.ok) {
+        clearInterval(interval);
+        return;
+      }
+
+      const data = (await resp.json()) as {
+        ok: boolean;
+        status?: string;
+      };
+      if (!data.ok) {
+        clearInterval(interval);
+        return;
+      }
+
+      if (
+        data.status === 'in-progress' ||
+        data.status === 'in_progress'
+      ) {
+        currentPanel?.webview.postMessage({ type: 'CALL_IN_PROGRESS' });
+      } else if (data.status === 'ended') {
+        currentPanel?.webview.postMessage({ type: 'CALL_ENDED' });
+        clearInterval(interval);
+      }
+    } catch {
+      // Silently continue polling on transient failures
+    }
+  }, intervalMs);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Server health-check                                                */
+/* ------------------------------------------------------------------ */
+
+async function waitForServer(
+  url: string,
+  retries = 20,
+  delay = 500
+): Promise<void> {
+  for (let i = 0; i < retries; i++) {
+    if (serverProcess && serverProcess.exitCode !== null) {
+      throw new Error(
+        `Python server exited early with code ${serverProcess.exitCode}`
+      );
+    }
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        return;
+      }
+    } catch {
+      // keep retrying
+    }
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  throw new Error('Server did not start in time');
+}
+
+/* ------------------------------------------------------------------ */
+/*  Cleanup helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+function killServer(): void {
+  if (serverProcess) {
+    if (serverProcess.exitCode === null) {
+      serverProcess.kill();
+    }
+    serverProcess = null;
+  }
+}
+
+function getNonce(): string {
+  const possible =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let text = '';
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Deactivation                                                       */
+/* ------------------------------------------------------------------ */
+
+export function deactivate(): void {
+  panelLockEnabled = false;
+  if (currentPanel) {
+    currentPanel.dispose();
+    currentPanel = null;
+  }
+  stopBackendPolling();
+  killServer();
+}

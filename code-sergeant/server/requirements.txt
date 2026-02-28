@@ -1,0 +1,5 @@
+fastapi>=0.115,<1.0
+uvicorn>=0.35,<1.0
+requests>=2.31,<3.0
+elevenlabs>=2.0,<3.0
+twilio>=9.0,<10.0

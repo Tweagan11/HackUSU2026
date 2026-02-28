@@ -1,8 +1,13 @@
 #!/bin/bash
 
-if [ ! -f "./code-sergeant/main.py" ]; then
-    echo "main.py not found!"
+set -euo pipefail
+
+SERVER_FILE="./code-sergeant/server/main.py"
+
+if [ ! -f "$SERVER_FILE" ]; then
+    echo "Server file not found: $SERVER_FILE"
     exit 1
 fi
 
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cd ./code-sergeant/server
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
