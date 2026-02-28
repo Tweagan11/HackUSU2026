@@ -731,7 +731,7 @@ function getWebviewHtml(
   <meta
     http-equiv="Content-Security-Policy"
     content="default-src 'none';
-      script-src 'nonce-${nonce}';
+      script-src 'nonce-${nonce}' ${webview.cspSource};
       style-src 'unsafe-inline';
       font-src ${webview.cspSource} data:;
       worker-src blob:;"
