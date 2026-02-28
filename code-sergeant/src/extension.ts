@@ -632,6 +632,9 @@ async function handleWebviewMessage(
         ok: boolean;
         is_correct?: boolean;
         feedback?: string;
+        punishment?: string;
+        punishment_phrase?: string;
+        punishment_reps?: number;
         state?: DrillState;
       };
       if (payload.is_correct) {
@@ -643,6 +646,9 @@ async function handleWebviewMessage(
         currentPanel?.webview.postMessage({
           type: 'RESULT_FAIL',
           message: payload.feedback ?? 'Incorrect. Try again, recruit.',
+          punishment: payload.punishment,
+          punishmentPhrase: payload.punishment_phrase,
+          punishmentReps: payload.punishment_reps,
         });
       }
     } catch (err) {

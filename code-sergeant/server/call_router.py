@@ -16,9 +16,15 @@ from starlette.responses import Response
 from twilio.rest import Client as TwilioClient
 from twilio.twiml.voice_response import VoiceResponse, Gather
 
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
 # ── Config (loaded from environment) ───────────────────────────────
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
+
+# Maximum number of sergeant responses *after* the greeting before hanging up
+MAX_CONVERSATION_TURNS = 2
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
@@ -123,21 +129,64 @@ def _generate_tts_url(text: str, cache_key: str) -> str | None:
         return None
 
 
+# Lazy LLM for conversational calls
+_call_llm = None
+
+def _get_call_llm():
+    """Lazy-init a lightweight model used only for phone-call dialogue."""
+    global _call_llm
+    if _call_llm is None:
+        _call_llm = init_chat_model("openai:gpt-4.1-mini")
+    return _call_llm
+
+
 def _generate_sergeant_followup(user_speech: str, session: dict) -> str:
     """
-    Generate a sergeant-style follow-up based on the user's speech.
+    Generate a sergeant-style follow-up by feeding the full conversation
+    history into the LLM so the call feels like a real back-and-forth.
     """
     if not user_speech.strip():
         return "SILENCE?! That's not an answer, recruit! Drop and give me 20!"
 
-    followups = [
-        f"You said {user_speech}?! That's the best excuse you've got, recruit?!",
-        f"{user_speech}... I've heard better explanations from a rubber duck!",
-        f"Is that code-speak for 'I have no idea', recruit?! {user_speech} means NOTHING to me!",
-        f"{user_speech}?! In MY army, we FIX bugs, we don't TALK to them!",
-        f"Roger that, recruit. '{user_speech}'. Now translate that into WORKING CODE!",
+    bug_type = session.get("bug_type", "unknown bug")
+    fail_count = session.get("fail_count", 0)
+    last_error = session.get("last_error", "N/A")
+    turn = session.get("turn", 1)
+    is_final = turn >= MAX_CONVERSATION_TURNS
+
+    # Build message history from stored transcripts
+    messages: list = [
+        SystemMessage(content=SERGEANT_SYSTEM_PROMPT.format(
+            bug_type=bug_type,
+            fail_count=fail_count,
+            last_error=last_error,
+        ) + (
+            "\n\nThis is your FINAL response on the call. Wrap it up with a commanding "
+            "sign-off and order the recruit back to their code."
+            if is_final else
+            "\n\nKeep the conversation going — challenge the recruit's answer, "
+            "ask a pointed follow-up question, or demand they explain their reasoning. "
+            "Stay in character. Keep it to 1-3 sentences."
+        )),
     ]
-    return random.choice(followups)
+
+    for entry in session.get("transcripts", []):
+        if entry["role"] == "user":
+            messages.append(HumanMessage(content=entry["text"]))
+        else:
+            messages.append(AIMessage(content=entry["text"]))
+
+    # Append the latest user utterance
+    messages.append(HumanMessage(content=user_speech))
+
+    try:
+        llm = _get_call_llm()
+        response = llm.invoke(messages)
+        return response.content
+    except Exception as e:
+        print(f"[followup-llm] Error: {e}", flush=True)
+        # Graceful fallback
+        return f"{user_speech}?! That's the best you've got, recruit?! Get back to your code!"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -275,39 +324,72 @@ async def twilio_voice(call_id: str):
 async def twilio_gather(call_id: str, req: Request):
     """
     Receives the user's speech transcription from Twilio's <Gather>.
-    Stores it and responds with a follow-up sergeant message.
+    Feeds it through the LLM and either continues the conversation
+    (another Gather) or ends the call once MAX_CONVERSATION_TURNS is reached.
     """
     form = await req.form()
     speech_result = form.get("SpeechResult", "")
 
     print(f"[twilio/gather] call={call_id} speech={speech_result}", flush=True)
 
+    session = call_sessions.get(call_id, {})
+
+    # Track which conversation turn we're on (1-indexed, after the greeting)
+    turn = session.get("turn", 0) + 1
     if call_id in call_sessions:
+        call_sessions[call_id]["turn"] = turn
         call_sessions[call_id].setdefault("transcripts", []).append(
             {"role": "user", "text": str(speech_result)}
         )
 
-    session = call_sessions.get(call_id, {})
-    follow_up = _generate_sergeant_followup(str(speech_result), session)
+    # Generate an LLM-powered sergeant response
+    follow_up = _generate_sergeant_followup(str(speech_result), call_sessions.get(call_id, session))
 
-    response = VoiceResponse()
-
-    audio_url = _generate_tts_url(follow_up, f"{call_id}-reply")
-    if audio_url:
-        response.play(audio_url)
-    else:
-        response.say(follow_up, voice="Polly.Matthew", language="en-US")
-
-    response.say(
-        "Sergeant Debugger OUT. Now get back to your code, recruit!",
-        voice="Polly.Matthew",
-    )
-
+    # Store sergeant reply in transcript
     if call_id in call_sessions:
         call_sessions[call_id].setdefault("transcripts", []).append(
             {"role": "sergeant", "text": follow_up}
         )
 
+    # Unique TTS cache key per turn so audio files don't collide
+    tts_key = f"{call_id}-reply-{turn}"
+    audio_url = _generate_tts_url(follow_up, tts_key)
+
+    response = VoiceResponse()
+
+    if turn < MAX_CONVERSATION_TURNS:
+        # Continue the conversation: play the response inside another <Gather>
+        gather = Gather(
+            input="speech",
+            action=f"{PUBLIC_BASE_URL}/twilio/gather/{call_id}",
+            method="POST",
+            timeout=10,
+            speech_timeout="auto",
+        )
+        if audio_url:
+            gather.play(audio_url)
+        else:
+            gather.say(follow_up, voice="Polly.Matthew", language="en-US")
+        response.append(gather)
+
+        # Fallback if user stays silent after this turn
+        response.say(
+            "No response detected. Speak up or I'm hanging up, recruit!",
+            voice="Polly.Matthew",
+        )
+    else:
+        # Final turn — play the response and sign off
+        if audio_url:
+            response.play(audio_url)
+        else:
+            response.say(follow_up, voice="Polly.Matthew", language="en-US")
+
+        response.say(
+            "Sergeant Debugger OUT. Now get back to your code, recruit!",
+            voice="Polly.Matthew",
+        )
+
+    print(f"[twilio/gather] call={call_id} turn={turn}/{MAX_CONVERSATION_TURNS}", flush=True)
     return _twiml_response(str(response))
 
 

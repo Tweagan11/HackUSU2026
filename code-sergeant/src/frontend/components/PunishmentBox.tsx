@@ -51,7 +51,10 @@ const PunishmentBox: React.FC<PunishmentBoxProps> = ({
   if (!visible) return null;
 
   const totalReps = Math.max(0, requiredReps);
-  const isComplete = totalReps === 0 || progress >= totalReps;
+  // If the LLM didn't assign write-lines (reps === 0), don't render the box at all
+  if (totalReps === 0) return null;
+
+  const isComplete = progress >= totalReps;
 
   const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toUpperCase();
 

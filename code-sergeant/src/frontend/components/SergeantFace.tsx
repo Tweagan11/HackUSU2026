@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import type { SergeantMood } from '../types';
-import sergeantOpen from '../assets/sergeant_open.png';
-import sergeantClosed from '../assets/sergeant_closed.png';
-import sergeantFuming from '../assets/sergeant_fuming.png';
+import { playAngerRumble } from '../speechBlip';
 
 interface SergeantFaceProps {
   mood: SergeantMood;
@@ -16,29 +14,12 @@ const ANGRY_MOODS: SergeantMood[] = ['angry', 'disappointed'];
 const SPEAK_INTERVAL_MS = 280; // mouth toggle speed
 
 const SergeantFace: React.FC<SergeantFaceProps> = ({ mood }) => {
-  const [mouthOpen, setMouthOpen] = useState(false);
-
-  // Animate mouth open/closed while speaking
+  // Play a low rumble when the sergeant enters angry mood
   useEffect(() => {
-    if (!SPEAKING_MOODS.includes(mood)) {
-      setMouthOpen(false);
-      return;
+    if (mood === 'angry') {
+      playAngerRumble();
     }
-    const interval = setInterval(() => {
-      setMouthOpen((prev) => !prev);
-    }, SPEAK_INTERVAL_MS);
-    return () => clearInterval(interval);
   }, [mood]);
-
-  let src: string;
-  if (ANGRY_MOODS.includes(mood)) {
-    src = sergeantFuming;
-  } else if (SPEAKING_MOODS.includes(mood)) {
-    src = mouthOpen ? sergeantOpen : sergeantClosed;
-  } else {
-    // idle, proud — resting face (mouth closed)
-    src = sergeantClosed;
-  }
 
   return (
     <img

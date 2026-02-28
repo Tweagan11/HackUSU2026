@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { DIALOGUE } from '../config';
+import { playWarningKlaxon } from '../speechBlip';
 
 /**
  * Boot screen shown during BOOTING state.
@@ -8,6 +9,12 @@ import { DIALOGUE } from '../config';
  * Progress bar fills over the boot duration.
  */
 const BootScreen: React.FC = () => {
+  // Play military klaxon alarm on mount
+  useEffect(() => {
+    const cleanup = playWarningKlaxon();
+    return cleanup;
+  }, []);
+
   return (
     <div className="boot-screen">
       <div className="boot-screen__title">SERGEANT DEBUGGER</div>
