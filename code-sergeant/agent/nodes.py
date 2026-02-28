@@ -12,6 +12,12 @@ class BugReport(BaseModel):
     bugs: list[Bug]
 
 
+class ChallengeCode(BaseModel):
+    language: str
+    code: str
+    instructions: str
+
+
 def make_llm_call(model):
     """Returns an llm_call node that uses the given model."""
     def llm_call(state: dict):
@@ -70,3 +76,35 @@ def make_extract_bugs(model):
 
     return extract_bugs
 
+
+def make_generate_challenge(model):
+    """Returns a generate_challenge node that produces a buggy coding challenge based on extracted bugs."""
+    structured_model = model.with_structured_output(ChallengeCode)
+
+    def generate_challenge(state: dict):
+        """Generates a toy programming challenge inspired by the bugs found in the codebase."""
+        bugs = state.get("bugs_found", [])
+        bug_summary = "\n".join(
+            f"- {b.description} (fix: {b.suggested_fix})" for b in bugs
+        ) or "general bugs"
+
+        response = structured_model.invoke(
+            [
+                SystemMessage(
+                    content=(
+                        "You are a programming tutor. Based on the bug types listed below, create a brand new, "
+                        "short, self-contained coding challenge for the user to practice fixing similar issues. "
+                        "Do NOT patch or reference the original code. Instead, invent a completely different "
+                        "simple program that contains the same category of bug. "
+                        "Return ONLY a JSON object with three fields:\n"
+                        "  language: the programming language (e.g. 'python')\n"
+                        "  code: a new buggy code snippet the user must fix (valid source code only, no prose, no markdown)\n"
+                        "  instructions: a one-sentence prompt telling the user what to fix\n\n"
+                        f"Bug types to base the challenge on:\n{bug_summary}"
+                    )
+                )
+            ]
+        )
+        return {"challenge": response}
+
+    return generate_challenge

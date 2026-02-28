@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from tools import get_rag_tool
 from utils import build_vector_store
 from state import ExtendedState
-from nodes import make_llm_call, make_tool_node, make_extract_bugs
+from nodes import make_llm_call, make_tool_node, make_extract_bugs, make_generate_challenge
 from IPython.display import Image, display
 
 
@@ -39,6 +39,7 @@ model_with_tools = model.bind_tools([tool])
 llm_call = make_llm_call(model_with_tools)
 tool_node = make_tool_node([tool])
 extract_bugs = make_extract_bugs(model)
+generate_challenge = make_generate_challenge(model)
 
 print("Initialize agent")
 agent_builder = StateGraph(ExtendedState)
@@ -46,6 +47,7 @@ agent_builder = StateGraph(ExtendedState)
 agent_builder.add_node("llm_call", llm_call)
 agent_builder.add_node("tool_node", tool_node)
 agent_builder.add_node("extract_bugs", extract_bugs)
+agent_builder.add_node("generate_challenge", generate_challenge)
 
 agent_builder.add_edge(START, "llm_call")
 agent_builder.add_conditional_edges(
@@ -54,7 +56,8 @@ agent_builder.add_conditional_edges(
     ["tool_node", "extract_bugs"]
 )
 agent_builder.add_edge("tool_node", "llm_call")
-agent_builder.add_edge("extract_bugs", END)
+agent_builder.add_edge("extract_bugs", "generate_challenge")
+agent_builder.add_edge("generate_challenge", END)
 
 print("Compiling agent")
 agent = agent_builder.compile()
@@ -64,9 +67,16 @@ print("Display the agent flow")
 display(Image(agent.get_graph(xray=True).draw_mermaid_png()))
 print(agent.get_graph().draw_ascii())
 
+import json
 from langchain.messages import HumanMessage
-messages = [HumanMessage(content="Use a tool to look through the files and find the bug.")]
-messages = agent.invoke({"messages": messages})
-for m in messages["messages"]:
+result = agent.invoke({"messages": [HumanMessage(content="Use a tool to look through the files and find the bug.")]})
+
+for m in result["messages"]:
     m.pretty_print()
-print("Call model")### TEST MODEL CALL AND RESPONSE ###
+
+challenge = result.get("challenge")
+if challenge:
+    print("\n=== Coding Challenge ===")
+    print(json.dumps(challenge.model_dump(), indent=2))
+else:
+    print("No challenge generated.")
