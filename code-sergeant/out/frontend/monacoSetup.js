@@ -19,4 +19,14 @@ self.MonacoEnvironment = {
         return new Worker(URL.createObjectURL(blob));
     }
 };
+// Ensure syntax tokenizers are bundled for languages used in training.
+require("monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution");
+require("monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution");
+require("monaco-editor/esm/vs/basic-languages/python/python.contribution");
+require("monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution");
+require("monaco-editor/esm/vs/basic-languages/java/java.contribution");
+require("monaco-editor/esm/vs/basic-languages/go/go.contribution");
+require("monaco-editor/esm/vs/basic-languages/rust/rust.contribution");
+require("monaco-editor/esm/vs/basic-languages/html/html.contribution");
+require("monaco-editor/esm/vs/language/json/monaco.contribution");
 //# sourceMappingURL=monacoSetup.js.map

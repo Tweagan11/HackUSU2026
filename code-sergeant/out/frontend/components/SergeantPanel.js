@@ -12,8 +12,8 @@ const ActionButton_1 = __importDefault(require("./ActionButton"));
  * Vertical stack: dialogue log → punishment box → action button.
  * (Phone call overlay is rendered at the App root level.)
  */
-const SergeantPanel = ({ uiState, dialogueLog, punishment, showPunishment, onSubmit, onRetry, onNextMission, }) => {
-    return ((0, jsx_runtime_1.jsxs)("div", { className: "sergeant-panel", children: [(0, jsx_runtime_1.jsx)("div", { className: "sergeant-panel__dialogue", children: (0, jsx_runtime_1.jsx)(DialogueLog_1.default, { entries: dialogueLog }) }), (0, jsx_runtime_1.jsx)("div", { className: "sergeant-panel__punishment", children: (0, jsx_runtime_1.jsx)(PunishmentBox_1.default, { punishment: punishment, visible: showPunishment }) }), (0, jsx_runtime_1.jsx)("div", { className: "sergeant-panel__action", children: (0, jsx_runtime_1.jsx)(ActionButton_1.default, { uiState: uiState, onSubmit: onSubmit, onRetry: onRetry, onNextMission: onNextMission }) })] }));
+const SergeantPanel = ({ uiState, dialogueLog, punishment, punishmentProgress, showPunishment, onPunishmentLineCompleted, onSubmit, onRetry, onNextMission, canRetryAfterPunishment, }) => {
+    return ((0, jsx_runtime_1.jsxs)("div", { className: "sergeant-panel", children: [(0, jsx_runtime_1.jsx)("div", { className: "sergeant-panel__dialogue", children: (0, jsx_runtime_1.jsx)(DialogueLog_1.default, { entries: dialogueLog }) }), (0, jsx_runtime_1.jsx)("div", { className: "sergeant-panel__punishment", children: (0, jsx_runtime_1.jsx)(PunishmentBox_1.default, { punishment: punishment, visible: showPunishment, progress: punishmentProgress, onLineCompleted: onPunishmentLineCompleted }) }), (0, jsx_runtime_1.jsx)("div", { className: "sergeant-panel__action", children: (0, jsx_runtime_1.jsx)(ActionButton_1.default, { uiState: uiState, onSubmit: onSubmit, onRetry: onRetry, onNextMission: onNextMission, canRetryAfterPunishment: canRetryAfterPunishment }) })] }));
 };
 exports.default = SergeantPanel;
 //# sourceMappingURL=SergeantPanel.js.map

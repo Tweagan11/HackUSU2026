@@ -8,10 +8,13 @@ interface SergeantPanelProps {
   uiState: UIState;
   dialogueLog: DialogueEntry[];
   punishment: string;
+  punishmentProgress: number;
   showPunishment: boolean;
+  onPunishmentLineCompleted: () => void;
   onSubmit: () => void;
   onRetry: () => void;
   onNextMission: () => void;
+  canRetryAfterPunishment: boolean;
 }
 
 /**
@@ -23,10 +26,13 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
   uiState,
   dialogueLog,
   punishment,
+  punishmentProgress,
   showPunishment,
+  onPunishmentLineCompleted,
   onSubmit,
   onRetry,
   onNextMission,
+  canRetryAfterPunishment,
 }) => {
   return (
     <div className="sergeant-panel">
@@ -34,7 +40,12 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
         <DialogueLog entries={dialogueLog} />
       </div>
       <div className="sergeant-panel__punishment">
-        <PunishmentBox punishment={punishment} visible={showPunishment} />
+        <PunishmentBox
+          punishment={punishment}
+          visible={showPunishment}
+          progress={punishmentProgress}
+          onLineCompleted={onPunishmentLineCompleted}
+        />
       </div>
       <div className="sergeant-panel__action">
         <ActionButton
@@ -42,6 +53,7 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
           onSubmit={onSubmit}
           onRetry={onRetry}
           onNextMission={onNextMission}
+          canRetryAfterPunishment={canRetryAfterPunishment}
         />
       </div>
     </div>

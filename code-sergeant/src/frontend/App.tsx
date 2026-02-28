@@ -24,10 +24,17 @@ import React, { useEffect, useReducer, useState, useCallback, useRef } from 'rea
 import { appReducer, initialState } from './reducer';
 import { createMessageListener, getVSCodeApi, submitCode, triggerTimeout, callSergeant } from './bridge';
 import { runMockAnalyzer } from './mock';
-import { BOOT_DURATION_MS, MISSION_TIMER_SECONDS, PUNISHMENTS, SAMPLE_CODE } from './config';
+import {
+  BOOT_DURATION_MS,
+  TRAINING_SPLASH_DURATION_MS,
+  MISSION_TIMER_SECONDS,
+  PUNISHMENT_REQUIRED_REPS,
+  SAMPLE_CODE,
+} from './config';
 import type { AppState, PersistedPanelState, UIState, SergeantMood } from './types';
 
 import BootScreen from './components/BootScreen';
+import TrainingSplash from './components/TrainingSplash';
 import TopBar from './components/TopBar';
 import MissionLayout from './components/MissionLayout';
 import AnalyzingOverlay from './components/AnalyzingOverlay';
@@ -38,6 +45,7 @@ import CallPanel from './components/CallPanel';
 /** Maps each UI state to the sergeant's mood */
 const MOOD_MAP: Record<UIState, SergeantMood> = {
   BOOTING: 'idle',
+  TRAINING_SPLASH: 'idle',
   IDLE: 'idle',
   ANALYZING: 'yelling',
   RESULT_FAIL: 'angry',
@@ -48,7 +56,13 @@ const MOOD_MAP: Record<UIState, SergeantMood> = {
 declare global {
   interface Window {
     __CODE_SERGEANT_INITIAL_STATE__?: unknown;
+    __CODE_SERGEANT_EDITOR_LANGUAGE__?: unknown;
   }
+}
+
+function readEditorLanguage(): string {
+  const raw = window.__CODE_SERGEANT_EDITOR_LANGUAGE__;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw : 'plaintext';
 }
 
 function isPersistedAppState(value: unknown): value is AppState {
@@ -60,6 +74,8 @@ function isPersistedAppState(value: unknown): value is AppState {
     Array.isArray(candidate.dialogueLog) &&
     typeof candidate.resultMessage === 'string' &&
     typeof candidate.punishment === 'string' &&
+    (typeof candidate.punishmentProgress === 'number' ||
+      typeof candidate.punishmentProgress === 'undefined') &&
     typeof candidate.attemptCount === 'number'
   );
 }
@@ -71,7 +87,6 @@ function readPersistedState(): PersistedPanelState | null {
   if (!candidate || typeof candidate !== 'object') return null;
   if (candidate.version !== 1) return null;
   if (!isPersistedAppState(candidate.appState)) return null;
-  if (candidate.appState.uiState === 'ANALYZING') return null;
   if (typeof candidate.timeLeftSec !== 'number' || !Number.isFinite(candidate.timeLeftSec)) return null;
   if (typeof candidate.savedAt !== 'number' || !Number.isFinite(candidate.savedAt)) return null;
   return {
@@ -84,10 +99,12 @@ function readPersistedState(): PersistedPanelState | null {
 
 const App: React.FC = () => {
   const persistedState = readPersistedState();
+  const editorLanguage = readEditorLanguage();
 
   const [state, dispatch] = useReducer(appReducer, {
     ...(persistedState?.appState ?? initialState),
     code: persistedState?.appState.code ?? SAMPLE_CODE,
+    punishmentProgress: persistedState?.appState.punishmentProgress ?? 0,
   });
 
   const [effects, setEffects] = useState({
@@ -112,6 +129,16 @@ const App: React.FC = () => {
     );
     return () => clearTimeout(timer);
   }, []);
+
+  // --- Training splash: transition to coding UI after delay ---
+  useEffect(() => {
+    if (state.uiState !== 'TRAINING_SPLASH') return;
+    const timer = setTimeout(
+      () => dispatch({ type: 'TRAINING_SPLASH_COMPLETE' }),
+      TRAINING_SPLASH_DURATION_MS
+    );
+    return () => clearTimeout(timer);
+  }, [state.uiState]);
 
   // --- Listen for messages from the VS Code extension host ---
   useEffect(() => createMessageListener(dispatch), []);
@@ -147,11 +174,9 @@ const App: React.FC = () => {
     if (timeLeftSec <= 0) {
       timeoutTriggeredRef.current = true;
       if (isDevMode) {
-        const punishment = PUNISHMENTS[Math.floor(Math.random() * PUNISHMENTS.length)];
         dispatch({
           type: 'RESULT_FAIL',
           message: 'Time expired. Sergeant initiated punishment protocol.',
-          punishment,
         });
       } else {
         triggerTimeout();
@@ -196,6 +221,10 @@ const App: React.FC = () => {
 
   const handleRetry = useCallback(() => {
     dispatch({ type: 'RETRY' });
+  }, []);
+
+  const handlePunishmentLineCompleted = useCallback(() => {
+    dispatch({ type: 'PUNISHMENT_LINE_COMPLETED' });
   }, []);
 
   const handleNextMission = useCallback(() => {
@@ -249,22 +278,30 @@ const App: React.FC = () => {
     <div className={rootClasses}>
       {/* BOOTING state: show boot screen */}
       {state.uiState === 'BOOTING' && <BootScreen />}
+      {state.uiState === 'TRAINING_SPLASH' && <TrainingSplash />}
 
-      {/* Main mission UI (hidden during boot) */}
-      {state.uiState !== 'BOOTING' && (
+      {/* Main mission UI (hidden during boot + training splash) */}
+      {state.uiState !== 'BOOTING' && state.uiState !== 'TRAINING_SPLASH' && (
         <>
           <TopBar uiState={state.uiState} mood={mood} timeLeftSec={timeLeftSec} />
           <MissionLayout
             code={state.code}
             onCodeChange={handleCodeChange}
+            editorLanguage={editorLanguage}
             readOnly={isEditorReadOnly}
             uiState={state.uiState}
             dialogueLog={state.dialogueLog}
             punishment={state.punishment}
+            punishmentProgress={state.punishmentProgress}
             showPunishment={state.uiState === 'RESULT_FAIL'}
+            onPunishmentLineCompleted={handlePunishmentLineCompleted}
             onSubmit={handleSubmit}
             onRetry={handleRetry}
             onNextMission={handleNextMission}
+            canRetryAfterPunishment={
+              state.uiState !== 'RESULT_FAIL' ||
+              state.punishmentProgress >= PUNISHMENT_REQUIRED_REPS
+            }
           />
         </>
       )}
@@ -275,12 +312,12 @@ const App: React.FC = () => {
       {/* PASS / MISSION_COMPLETE overlay */}
       {(state.uiState === 'RESULT_PASS' ||
         state.uiState === 'MISSION_COMPLETE') && (
-        <PassScreen
-          message={state.resultMessage}
-          uiState={state.uiState}
-          onNextMission={handleNextMission}
-        />
-      )}
+          <PassScreen
+            message={state.resultMessage}
+            uiState={state.uiState}
+            onNextMission={handleNextMission}
+          />
+        )}
 
       {/* Confetti particle burst on pass */}
       {effects.confetti && <EffectsLayer type="confetti" />}

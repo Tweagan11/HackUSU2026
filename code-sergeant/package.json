@@ -10,7 +10,12 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onDebug",
+    "onCommand:workbench.action.debug.start",
+    "onCommand:workbench.action.debug.run",
+    "onCommand:python.execInTerminal",
+    "onCommand:code-runner.run"
   ],
   "main": "./out/extension.js",
   "contributes": {
