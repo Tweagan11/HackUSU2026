@@ -13,7 +13,7 @@ import json
 load_dotenv()
 
 from call_router import router as call_router
-# from agent import Agent
+from agent import Agent
 
 app = FastAPI()
 app.include_router(call_router)
@@ -47,18 +47,35 @@ def health():
 
 @app.post("/start")
 def start(data: dict):
+    global agent
 
-    path = data["workspace_dir"]
-    print(path)
+    # The extension sends { dir: "..." } with the workspace path.
+    workspace_dir = data.get("dir") or data.get("workspace_dir") or "."
+    print(f"[start] workspace_dir={workspace_dir}", flush=True)
 
-    agent = Agent(path)
-
-    response = agent.run()
+    try:
+        agent = Agent(workspace_dir)
+        response = agent.run()
+    except Exception as e:
+        print(f"[start] Agent error: {e}", flush=True)
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e), "state": drill_state}
 
     code_challenge = response.get("challenge")
-    print(code_challenge)
-    
-    return {"ok":True, "state": code_challenge}
+    print(f"[start] challenge={code_challenge}", flush=True)
+
+    if code_challenge:
+        # Update drill_state so the frontend has valid state
+        drill_state["animation"] = "ready"
+        drill_state["isComplete"] = False
+        drill_state["message"] = "New drill initialized"
+        drill_state["updatedAt"] = datetime.utcnow().isoformat()
+
+    return {
+        "ok": True,
+        "state": drill_state,
+        "challenge": code_challenge.model_dump() if hasattr(code_challenge, 'model_dump') else code_challenge,
+    }
 
 
 @app.post("/submit")
