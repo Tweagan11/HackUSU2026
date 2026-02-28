@@ -5,17 +5,11 @@
  * and theme values live here.
  * ========================================= */
 
-/** Random punishments shown on RESULT_FAIL */
-export const PUNISHMENTS = [
-  "DROP AND GIVE ME 20 SEMICOLONS!",
-  "YOU CALL THAT A LOOP, RECRUIT?",
-  "THIS CODE WOULDN'T PASS BASIC TRAINING!",
-  "YOUR NULL CHECK IS MISSING, SOLDIER!",
-  "I'VE SEEN BETTER CODE FROM A CALCULATOR!",
-  "DID YOUR CAT WRITE THIS?!",
-  "THIS FUNCTION IS AWOL, RECRUIT!",
-  "YOUR VARIABLE NAMES ARE A WAR CRIME!",
-] as const;
+/** Mandatory punishment phrase for failed attempts */
+export const PUNISHMENT_PHRASE = 'I WILL DO BETTER' as const;
+
+/** Number of required repetitions before retry is allowed */
+export const PUNISHMENT_REQUIRED_REPS = 10;
 
 /** Dialogue lines by state category */
 export const DIALOGUE = {
@@ -63,6 +57,9 @@ console.log(result);
 
 /** Boot screen duration in milliseconds */
 export const BOOT_DURATION_MS = 2500;
+
+/** Training splash duration in milliseconds */
+export const TRAINING_SPLASH_DURATION_MS = 1200;
 
 /** Mock analyzer delay in milliseconds */
 export const ANALYZE_MOCK_DELAY_MS = 1500;

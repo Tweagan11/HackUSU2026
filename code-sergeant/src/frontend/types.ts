@@ -5,6 +5,7 @@
 /** Deterministic UI states for the state machine */
 export type UIState =
   | 'BOOTING'
+  | 'TRAINING_SPLASH'
   | 'IDLE'
   | 'ANALYZING'
   | 'RESULT_FAIL'
@@ -32,6 +33,7 @@ export type AppState = {
   dialogueLog: DialogueEntry[];
   resultMessage: string;
   punishment: string;
+  punishmentProgress: number;
   attemptCount: number;
   /** Phone call state */
   callStatus: CallStatus;
@@ -43,11 +45,13 @@ export type AppState = {
 /** All possible reducer actions */
 export type AppAction =
   | { type: 'BOOT_COMPLETE' }
+  | { type: 'TRAINING_SPLASH_COMPLETE' }
   | { type: 'SUBMIT_CODE' }
   | { type: 'ANALYZE_START' }
   | { type: 'RESULT_FAIL'; message: string; punishment?: string }
   | { type: 'RESULT_PASS'; message: string }
   | { type: 'SET_CODE'; code: string }
+  | { type: 'PUNISHMENT_LINE_COMPLETED' }
   | { type: 'RETRY' }
   | { type: 'NEXT_MISSION' }
   | { type: 'SET_PHONE_NUMBER'; phoneNumber: string }
