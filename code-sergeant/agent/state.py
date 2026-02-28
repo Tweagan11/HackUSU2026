@@ -12,3 +12,4 @@ class MessagesState(TypedDict):
 
 class ExtendedState(MessagesState):
     bugs_found: list
+    challenge: dict
