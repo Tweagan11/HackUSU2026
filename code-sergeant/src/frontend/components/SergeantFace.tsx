@@ -7,6 +7,7 @@ interface SergeantFaceProps {
 
 const MOOD_LABELS: Record<SergeantMood, string> = {
   idle: 'At ease',
+  suspicious: 'SUSPICIOUS',
   yelling: 'ANALYZING!',
   angry: 'FURIOUS!',
   disappointed: 'Disappointed',

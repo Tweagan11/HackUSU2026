@@ -10,11 +10,11 @@
 			"type": "extensionHost",
 			"request": "launch",
 			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}"
+				"--extensionDevelopmentPath=${workspaceFolder}/code-sergeant"
 			],
 			"outFiles": [
-				"${workspaceFolder}/out/**/*.js",
-				"${workspaceFolder}/media/**/*.js"
+				"${workspaceFolder}/code-sergeant/out/**/*.js",
+				"${workspaceFolder}/code-sergeant/media/**/*.js"
 			],
 			"preLaunchTask": "${defaultBuildTask}"
 		}

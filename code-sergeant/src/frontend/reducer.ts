@@ -37,7 +37,10 @@ export const initialState: AppState = {
   dialogueLog: [],
   resultMessage: '',
   punishment: '',
+  punishmentPhrase: PUNISHMENT_PHRASE,
+  punishmentRequiredReps: PUNISHMENT_REQUIRED_REPS,
   punishmentProgress: 0,
+  retryUnlocked: false,
   attemptCount: 0,
   callStatus: 'idle',
   callId: '',
@@ -52,15 +55,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (state.uiState !== 'BOOTING') return state;
       return {
         ...state,
+        uiState: 'BUG_ALERT',
+      };
+
+    case 'BUG_ALERT_COMPLETE':
+      if (state.uiState !== 'BUG_ALERT') return state;
+      return {
+        ...state,
         uiState: 'TRAINING_SPLASH',
+        dialogueLog: addDialogue(state.dialogueLog, randomItem(DIALOGUE.alert)),
       };
 
     case 'TRAINING_SPLASH_COMPLETE':
       if (state.uiState !== 'TRAINING_SPLASH') return state;
       return {
         ...state,
-        uiState: 'IDLE',
-        dialogueLog: addDialogue(state.dialogueLog, randomItem(DIALOGUE.idle)),
+        uiState: 'BRIEFING_HOLD',
+        dialogueLog: addDialogue(state.dialogueLog, randomItem(DIALOGUE.briefing)),
       };
 
     case 'SET_CODE':
@@ -75,8 +86,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       ) {
         return state;
       }
+      const nextUiState = state.uiState === 'BRIEFING_HOLD' ? 'IDLE' : state.uiState;
       return {
         ...state,
+        uiState: nextUiState,
         code: action.code,
         challengeLanguage: action.language,
         missionInstructions: action.instructions,
@@ -105,14 +118,29 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             : state.dialogueLog,
       };
 
-    case 'RESULT_FAIL':
+    case 'RESULT_FAIL': {
       if (state.uiState !== 'ANALYZING' && state.uiState !== 'IDLE') return state;
+      const normalizedPhrase = action.punishmentPhrase?.trim();
+      const punishmentPhrase = normalizedPhrase && normalizedPhrase.length > 0
+        ? normalizedPhrase
+        : PUNISHMENT_PHRASE;
+      const punishmentRequiredReps =
+        typeof action.punishmentReps === 'number' && Number.isFinite(action.punishmentReps) && action.punishmentReps > 0
+          ? action.punishmentReps
+          : PUNISHMENT_REQUIRED_REPS;
+      const punishmentOverride = action.punishment?.trim();
+      const punishmentText = punishmentOverride && punishmentOverride.length > 0
+        ? punishmentOverride
+        : `TYPE "${punishmentPhrase}" ${punishmentRequiredReps} TIMES.`;
       return {
         ...state,
         uiState: 'RESULT_FAIL',
         resultMessage: action.message,
-        punishment: `TYPE "${PUNISHMENT_PHRASE}" ${PUNISHMENT_REQUIRED_REPS} TIMES.`,
+        punishment: punishmentText,
+        punishmentPhrase,
+        punishmentRequiredReps,
         punishmentProgress: 0,
+        retryUnlocked: punishmentRequiredReps === 0,
         attemptCount: state.attemptCount + 1,
         dialogueLog: addDialogue(
           state.dialogueLog,
@@ -120,15 +148,18 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           'fail'
         ),
       };
+    }
 
     case 'PUNISHMENT_LINE_COMPLETED':
-      if (state.uiState !== 'RESULT_FAIL') return state;
+      if (state.uiState !== 'RESULT_FAIL' || state.retryUnlocked) return state;
+      const nextProgress = Math.min(
+        state.punishmentProgress + 1,
+        state.punishmentRequiredReps
+      );
       return {
         ...state,
-        punishmentProgress: Math.min(
-          state.punishmentProgress + 1,
-          PUNISHMENT_REQUIRED_REPS
-        ),
+        punishmentProgress: nextProgress,
+        retryUnlocked: nextProgress >= state.punishmentRequiredReps,
       };
 
     case 'RESULT_PASS':
@@ -141,13 +172,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
 
     case 'RETRY':
-      if (state.uiState !== 'RESULT_FAIL') return state;
-      if (state.punishmentProgress < PUNISHMENT_REQUIRED_REPS) return state;
+      if (state.uiState !== 'RESULT_FAIL' || !state.retryUnlocked) return state;
       return {
         ...state,
         uiState: 'IDLE',
         punishment: '',
+        punishmentPhrase: PUNISHMENT_PHRASE,
+        punishmentRequiredReps: PUNISHMENT_REQUIRED_REPS,
         punishmentProgress: 0,
+        retryUnlocked: false,
         resultMessage: '',
         dialogueLog: addDialogue(state.dialogueLog, randomItem(DIALOGUE.idle)),
       };
