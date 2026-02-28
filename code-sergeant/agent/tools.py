@@ -2,7 +2,7 @@ import os
 
 from langchain_core.tools import tool
 from langchain.chat_models import init_chat_model
-from langchain.messages import SystemMessage
+from langchain_core.messages import SystemMessage
 from utils import *
 
 #Define tools
@@ -22,7 +22,7 @@ def get_rag_tool():
     return search_codebase
 
 # Initializing mini model for specific tool
-tool_model = init_chat_model("openai:o4-mini")
+tool_model = init_chat_model("openai:gpt-4.1-nano")
 
 def create_punishment_tool():
     @tool
