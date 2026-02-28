@@ -3,12 +3,17 @@ import random
 from datetime import datetime
 import os
 import uuid
+from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.websockets import WebSocketDisconnect
+
+load_dotenv()
 
 from twilio.rest import Client as TwilioClient
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from elevenlabs.client import ElevenLabs
+
+# from agent import graph
 
 # ── API Keys & Config ──────────────────────────────────────────────
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
