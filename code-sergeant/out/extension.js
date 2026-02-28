@@ -39,6 +39,7 @@ const vscode = __importStar(require("vscode"));
 const cp = __importStar(require("child_process"));
 const path = __importStar(require("path"));
 const net = __importStar(require("net"));
+const fs = __importStar(require("fs"));
 /* ------------------------------------------------------------------ */
 /*  Module-level state                                                 */
 /* ------------------------------------------------------------------ */
@@ -222,15 +223,97 @@ function resolveActiveEditorLanguageId() {
 /* ------------------------------------------------------------------ */
 /*  Python server management                                           */
 /* ------------------------------------------------------------------ */
+/** Locate a working python3 binary, trying common names. */
+function findPython3() {
+    for (const candidate of ['python3', 'python']) {
+        try {
+            const result = cp.execFileSync(candidate, ['--version'], {
+                encoding: 'utf-8',
+                timeout: 5000,
+            });
+            if (result.startsWith('Python 3')) {
+                return candidate;
+            }
+        }
+        catch {
+            // not found — try next
+        }
+    }
+    throw new Error('Could not find Python 3. Please install Python 3.10+ and make sure it is on your PATH.');
+}
+/** Run a shell command and return its stdout. Rejects on non-zero exit. */
+function execAsync(cmd, args, cwd) {
+    return new Promise((resolve, reject) => {
+        cp.execFile(cmd, args, { cwd, timeout: 300_000 }, (err, stdout, stderr) => {
+            if (err) {
+                reject(new Error(`${cmd} ${args.join(' ')} failed:\n${stderr || err.message}`));
+            }
+            else {
+                resolve(stdout);
+            }
+        });
+    });
+}
+/**
+ * Ensure a virtual-environment exists inside `server/.venv` and that
+ * all packages from `server/requirements.txt` are installed.
+ *
+ * Runs inside `vscode.window.withProgress` so the user sees a spinner.
+ */
+async function ensureVenv(serverDir, progress) {
+    const venvDir = path.join(serverDir, '.venv');
+    const isWindows = process.platform === 'win32';
+    const venvPython = isWindows
+        ? path.join(venvDir, 'Scripts', 'python.exe')
+        : path.join(venvDir, 'bin', 'python');
+    const requirementsPath = path.join(serverDir, 'requirements.txt');
+    // 1. Create venv if it doesn't exist
+    if (!fs.existsSync(venvPython)) {
+        progress.report({ message: 'Creating Python virtual environment…' });
+        const systemPython = findPython3();
+        await execAsync(systemPython, ['-m', 'venv', venvDir], serverDir);
+        console.log('[Code Sergeant] Created venv at', venvDir);
+    }
+    // 2. Install / upgrade requirements if the file changed since last install
+    const stampFile = path.join(venvDir, '.requirements-stamp');
+    const reqContent = fs.readFileSync(requirementsPath, 'utf-8');
+    const currentStamp = reqContent.trim();
+    let existingStamp = '';
+    try {
+        existingStamp = fs.readFileSync(stampFile, 'utf-8').trim();
+    }
+    catch {
+        // stamp doesn't exist yet
+    }
+    if (currentStamp !== existingStamp) {
+        progress.report({ message: 'Installing Python dependencies…' });
+        await execAsync(venvPython, ['-m', 'pip', 'install', '--upgrade', '-q', '-r', requirementsPath], serverDir);
+        fs.writeFileSync(stampFile, currentStamp, 'utf-8');
+        console.log('[Code Sergeant] Installed requirements into venv');
+    }
+    else {
+        console.log('[Code Sergeant] Requirements already up-to-date');
+    }
+    return venvPython;
+}
 async function startServer(context, port) {
     killServer();
-    const serverPath = path.join(context.extensionPath, 'server', 'main.py');
-    serverProcess = cp.spawn('python3', [serverPath], {
-        cwd: path.dirname(serverPath),
+    const serverDir = path.join(context.extensionPath, 'server');
+    const serverPath = path.join(serverDir, 'main.py');
+    // Bootstrap the venv with a visible progress indicator
+    const venvPython = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Code Sergeant',
+        cancellable: false,
+    }, (progress) => ensureVenv(serverDir, progress));
+    serverProcess = cp.spawn(venvPython, [serverPath], {
+        cwd: serverDir,
         env: {
             ...process.env,
             CODE_SERGEANT_PORT: String(port),
             PYTHONUNBUFFERED: '1',
+            // Make sure the venv's site-packages take priority
+            VIRTUAL_ENV: path.join(serverDir, '.venv'),
         },
         stdio: 'pipe',
     });

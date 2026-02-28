@@ -16,6 +16,7 @@ code-sergeant/node_modules/
 code-sergeant/__pycache__/
 code-sergeant/*.pyc
 code-sergeant/agent/chroma_db/
+code-sergeant/server/.venv/
 
 # Environment
 .env
