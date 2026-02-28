@@ -16,6 +16,9 @@ let lastAutoTriggerAt = 0;
 let backendPollTimer: ReturnType<typeof setInterval> | null = null;
 let persistedPanelState: PersistedPanelState | null = null;
 let lastChallenge: ChallengePayload | null = null;
+let challengeSendCount = 0;
+const MAX_CHALLENGE_SENDS = 5;
+let workflowInFlight = false;
 
 const AUTO_TRIGGER_DEBOUNCE_MS = 1500;
 const PANEL_STATE_KEY = 'codeSergeant.panelState';
@@ -149,6 +152,13 @@ async function openSergeantWorkflow(
       return;
     }
 
+    // Prevent concurrent workflows from racing and killing each other's server.
+    if (workflowInFlight) {
+      console.log(`[Code Sergeant] Skipping trigger (${reason}) — workflow already in flight`);
+      return;
+    }
+    workflowInFlight = true;
+
     console.log(`[Code Sergeant] Triggered by ${reason}`);
     const port = await findAvailablePort();
     const serverUrl = `http://127.0.0.1:${port}`;
@@ -182,6 +192,7 @@ async function openSergeantWorkflow(
 
     // Challenge will arrive asynchronously via /state polling — clear any stale one
     lastChallenge = null;
+    challengeSendCount = 0;
     console.log('[Code Sergeant] Agent running in background, challenge will arrive via polling');
 
     // Fresh run should start from boot/training flow, not prior mission state.
@@ -192,6 +203,7 @@ async function openSergeantWorkflow(
     startBackendPolling(serverUrl);
   } catch (error) {
     panelLockEnabled = false;
+    workflowInFlight = false;
     stopBackendPolling();
     killServer();
     const msg = error instanceof Error ? error.message : String(error);
@@ -496,6 +508,7 @@ function createOrRevealLockedPanel(
       setTimeout(() => createOrRevealLockedPanel(context), 50);
       return;
     }
+    workflowInFlight = false;
     stopBackendPolling();
     killServer();
   });
@@ -519,11 +532,10 @@ async function handleWebviewMessage(
     return;
   }
 
-  if (!lastServerUrl) {
-    return;
-  }
-
   // --- WEBVIEW_READY: send cached challenge when webview is loaded ---
+  // NOTE: This must be checked BEFORE the !lastServerUrl guard so the
+  // webview always receives the cached challenge, even in edge cases
+  // where lastServerUrl hasn't been set yet.
   if (message.type === 'WEBVIEW_READY') {
     console.log('[Code Sergeant] WEBVIEW_READY received. lastChallenge =', JSON.stringify(lastChallenge));
     if (lastChallenge && currentPanel) {
@@ -535,6 +547,10 @@ async function handleWebviewMessage(
     } else {
       console.log('[Code Sergeant] No challenge to send (lastChallenge is null)');
     }
+    return;
+  }
+
+  if (!lastServerUrl) {
     return;
   }
 
@@ -791,15 +807,24 @@ function startBackendPolling(serverUrl: string): void {
       }
       const payload = (await resp.json()) as Record<string, unknown>;
 
-      // Detect challenge arriving from the background agent run
-      if (payload.challenge && !lastChallenge) {
+      // Detect challenge arriving from the background agent run.
+      // Re-send up to MAX_CHALLENGE_SENDS times to handle cases where
+      // the webview's message listener wasn't ready on the first delivery.
+      if (payload.challenge) {
         const challenge = payload.challenge as ChallengePayload;
-        lastChallenge = challenge;
-        console.log('[Code Sergeant] Challenge arrived via polling:', JSON.stringify(challenge));
-        currentPanel?.webview.postMessage({
-          type: 'CHALLENGE_LOADED',
-          challenge,
-        });
+        if (!lastChallenge) {
+          lastChallenge = challenge;
+          challengeSendCount = 0;
+          console.log('[Code Sergeant] Challenge arrived via polling:', JSON.stringify(challenge));
+        }
+        if (challengeSendCount < MAX_CHALLENGE_SENDS) {
+          challengeSendCount++;
+          console.log(`[Code Sergeant] Sending CHALLENGE_LOADED to webview (attempt ${challengeSendCount}/${MAX_CHALLENGE_SENDS})`);
+          currentPanel?.webview.postMessage({
+            type: 'CHALLENGE_LOADED',
+            challenge,
+          });
+        }
       }
 
       // If the backend signals an error, relay to the front-end
@@ -949,6 +974,7 @@ function getNonce(): string {
 
 export function deactivate(): void {
   panelLockEnabled = false;
+  workflowInFlight = false;
   if (currentPanel) {
     currentPanel.dispose();
     currentPanel = null;
