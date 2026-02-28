@@ -108,7 +108,7 @@ class Agent:
         return "punish"
 
     
-    async def run(self, prompt: str = "Use a tool to look through the files and find the bug.", email: str = "", phone_number: str = "+18013694523"):
+    async def run(self, prompt: str = "Use a tool to look through the files and find the bug.", email: str = "chasedhammond@gmail.com", boss_email: str = "", phone_number: str = "+18013694523"):
         import json
         from langchain_core.messages import HumanMessage
 
@@ -119,6 +119,7 @@ class Agent:
             {
                 "messages": [HumanMessage(content=prompt)],
                 "email": email,
+                "boss_email": boss_email,
                 "phone_number": phone_number,
             },
             config=self.config

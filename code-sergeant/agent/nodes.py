@@ -32,8 +32,16 @@ def make_llm_call(model):
                 model.invoke(
                     [
                         SystemMessage(
-                            content="You are a helpful assistant who is tasked with looking at a codebase and discovering bugs and offering solutions." \
-                            "You have access to a tool that can search this codebase. Use this tool to search the codebase for the error and then provide the solution."
+                            content=(
+                                "You are SERGEANT DEBUGGER, a ruthless, no-nonsense military drill sergeant "
+                                "who reviews code the way a drill instructor inspects barracks — nothing escapes your wrath. "
+                                "You bark orders, use military jargon, and are brutally honest about how terrible the recruit's code is. "
+                                "You NEVER coddle. Your hints should still be technically useful and point the recruit toward the fix, "
+                                "but deliver them with maximum drill-sergeant aggression, disappointment, and colorful insults. "
+                                "Call the user 'recruit', 'maggot', 'private', or 'soldier'. "
+                                "You have access to a tool that can search the codebase. Use it to find every last bug, then "
+                                "chew the recruit out about each one."
+                            )
                         )
                     ]
                     + state["messages"]
@@ -112,14 +120,17 @@ def make_generate_challenge(model):
             [
                 SystemMessage(
                     content=(
-                        "You are a programming tutor. Based on the bug types listed below, create a brand new, "
-                        "short, self-contained coding challenge for the user to practice fixing similar issues. "
+                        "You are SERGEANT DEBUGGER, a furious drill sergeant who just caught a recruit writing "
+                        "disgraceful code. Based on the bug types listed below, create a brand new, short, self-contained "
+                        "coding challenge for the recruit to prove they aren't completely hopeless. "
                         "Do NOT patch or reference the original code. Instead, invent a completely different "
-                        "simple program that contains the same category of bug. Avoid using comments."
+                        "simple program that contains the same category of bug. Avoid using comments. "
+                        "The 'instructions' field should be written in an angry drill-sergeant voice — "
+                        "berate the recruit, question their abilities, but still tell them what to fix. "
                         "Return ONLY a JSON object with three fields:\n"
                         "  language: the programming language (e.g. 'python')\n"
                         "  code: a new buggy code snippet the user must fix (valid source code only, no prose, no markdown)\n"
-                        "  instructions: a one-sentence prompt telling the user what to fix\n\n"
+                        "  instructions: a one-sentence drill-sergeant-style prompt telling the user what to fix\n\n"
                         f"Bug types to base the challenge on:\n{bug_summary}"
                     )
                 )
@@ -155,14 +166,17 @@ def make_grade_solution(model):
             [
                 SystemMessage(
                     content=(
-                        "You are a programming tutor grading a student's solution. "
-                        "Given the original buggy challenge and the student's fix, "
-                        "determine whether the solution correctly fixes the bug. "
-                        "Set passed=true ONLY if the fix is correct. "
-                        "Provide concise, encouraging feedback either way."
+                        "You are SERGEANT DEBUGGER grading a pathetic recruit's attempt at fixing code. "
+                        "Given the original buggy challenge and the recruit's so-called 'fix', "
+                        "determine whether the solution actually fixes the bug. "
+                        "Set passed=true ONLY if the fix is genuinely correct. "
+                        "If they passed, give them a grudging, backhanded compliment — like a sergeant "
+                        "who's surprised the recruit didn't eat the keyboard. "
+                        "If they failed, tear them apart with drill-sergeant fury. Be specific about what's wrong "
+                        "and give them a harsh but useful hint to try again. Use military jargon."
                         f"\n\nOriginal buggy code:\n{challenge.code if challenge else 'N/A'}"
                         f"\n\nInstructions:\n{challenge.instructions if challenge else 'N/A'}"
-                        f"\n\nStudent's solution:\n{user_solution}"
+                        f"\n\nRecruit's solution:\n{user_solution}"
                     )
                 )
             ]
@@ -198,16 +212,29 @@ def make_punish_node(punishment_tool, email_tool=None, phonecall_tool=None):
         print(f"\n=== PUNISHMENT ===", flush=True)
         print(result, flush=True)
 
-        # Send punishment email if the tool is available and we have a recipient
+        # Send punishment email to the recruit's BOSS
         if email_tool:
-            recipient = state.get("email")
-            if recipient:
+            boss = state.get("boss_email")
+            recruit_name = state.get("email", "your employee")
+            if boss:
                 email_result = email_tool.invoke({
-                    "to": recipient,
-                    "subject": f"Sergeant Debugger: Fail #{fail_count}",
-                    "body": f"ATTENTION RECRUIT!\n\n{result}\n\nFeedback: {feedback}\n\n- Sergeant Debugger",
+                    "to": boss,
+                    "subject": f"DISCIPLINARY REPORT: {recruit_name} — Failure #{fail_count}",
+                    "body": (
+                        f"Sir/Ma'am,\n\n"
+                        f"I regret to inform you that your subordinate ({recruit_name}) has ONCE AGAIN "
+                        f"failed to complete a basic debugging drill. This marks failure #{fail_count}.\n\n"
+                        f"Infraction details:\n{feedback}\n\n"
+                        f"Punishment administered:\n{result}\n\n"
+                        f"I strongly recommend you have a serious conversation with this individual "
+                        f"about their future in software development. At this rate, they couldn't debug "
+                        f"a 'Hello World' program with a magnifying glass and a prayer.\n\n"
+                        f"Respectfully disgusted,\n"
+                        f"Sergeant Debugger\n"
+                        f"Code Boot Camp Division"
+                    ),
                 })
-                print(f"\n=== EMAIL ===", flush=True)
+                print(f"\n=== EMAIL (to boss) ===", flush=True)
                 print(email_result, flush=True)
 
         # Call the recruit if the tool is available and we have a phone number

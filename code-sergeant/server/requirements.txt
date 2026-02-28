@@ -17,6 +17,4 @@ pydantic>=2.0,<3.0
 chromadb>=0.5,<1.0
 pyngrok>=7.0,<8.0
 grandalf
-google-api-python-client 
-google-auth-httplib2 
-google-auth-oauthlib
+resend>=2.0,<3.0
