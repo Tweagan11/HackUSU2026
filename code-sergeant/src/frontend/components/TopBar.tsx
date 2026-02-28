@@ -23,7 +23,7 @@ const TopBar: React.FC<TopBarProps> = ({ mood, timeLeftSec }) => {
   return (
     <div className="top-bar">
       <div className="top-bar__mission">
-        MISSION: FIX THE NULL POINTER
+        MISSION: ELIMINATE THE BUG
       </div>
       <div className="top-bar__status">
         TIMER: {minutes}:{seconds}
