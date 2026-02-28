@@ -59,6 +59,8 @@ def make_tool_node(tools):
     return tool_node
 
 
+
+
 def make_extract_bugs(model):
     """Returns an extract_bugs node that produces a structured BugReport."""
     structured_model = model.with_structured_output(BugReport)
@@ -156,6 +158,27 @@ def make_grade_solution(model):
                 )
             ]
         )
-        return {"grade": response}
+        fail_count = state.get("fail_count", 0)
+        if not response.passed:
+            fail_count += 1
+        return {
+            "grade": response,
+            "passed": response.passed,
+            "fail_count": fail_count,
+        }
 
     return grade_solution
+
+
+def make_punish_node(punishment_tool):
+    """Returns a punish node that calls the punishment tool directly and loops back."""
+    def punish(state: dict):
+        print("I am being punished")
+        grade = state.get("grade")
+        feedback = grade.feedback if hasattr(grade, "feedback") else str(grade)
+        fail_count = state.get("fail_count", 0)
+        result = "punished! ouch" # punishment_tool.invoke({"query": f"Fail #{fail_count}. {feedback}"})
+        print(f"\n=== PUNISHMENT ===", flush=True)
+        print(result, flush=True)
+        return {"punishment": result}
+    return punish

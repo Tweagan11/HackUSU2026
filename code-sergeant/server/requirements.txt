@@ -15,3 +15,4 @@ langgraph>=0.4,<1.0
 langchain-text-splitters>=0.3,<1.0
 pydantic>=2.0,<3.0
 chromadb>=0.5,<1.0
+pyngrok>=7.0,<8.0
