@@ -5,6 +5,8 @@
 /** Deterministic UI states for the state machine */
 export type UIState =
   | 'BOOTING'
+  | 'BUG_ALERT'
+  | 'BRIEFING_HOLD'
   | 'TRAINING_SPLASH'
   | 'IDLE'
   | 'ANALYZING'
@@ -13,7 +15,13 @@ export type UIState =
   | 'MISSION_COMPLETE';
 
 /** Sergeant face mood for sprite/emoji display */
-export type SergeantMood = 'idle' | 'yelling' | 'angry' | 'disappointed' | 'proud';
+export type SergeantMood =
+  | 'idle'
+  | 'suspicious'
+  | 'yelling'
+  | 'angry'
+  | 'disappointed'
+  | 'proud';
 
 /** Single entry in the dialogue log */
 export type DialogueEntry = {
@@ -35,7 +43,10 @@ export type AppState = {
   dialogueLog: DialogueEntry[];
   resultMessage: string;
   punishment: string;
+  punishmentPhrase: string;
+  punishmentRequiredReps: number;
   punishmentProgress: number;
+  retryUnlocked: boolean;
   attemptCount: number;
   /** Phone call state */
   callStatus: CallStatus;
@@ -47,10 +58,17 @@ export type AppState = {
 /** All possible reducer actions */
 export type AppAction =
   | { type: 'BOOT_COMPLETE' }
+  | { type: 'BUG_ALERT_COMPLETE' }
   | { type: 'TRAINING_SPLASH_COMPLETE' }
   | { type: 'SUBMIT_CODE' }
   | { type: 'ANALYZE_START' }
-  | { type: 'RESULT_FAIL'; message: string; punishment?: string }
+  | {
+    type: 'RESULT_FAIL';
+    message: string;
+    punishment?: string;
+    punishmentPhrase?: string;
+    punishmentReps?: number;
+  }
   | { type: 'RESULT_PASS'; message: string }
   | { type: 'SET_CODE'; code: string }
   | { type: 'CHALLENGE_LOADED'; code: string; language: string; instructions: string }
@@ -68,7 +86,13 @@ export type AppAction =
 /** Messages received from the VS Code extension host */
 export type ExtensionMessage =
   | { type: 'ANALYZE_START' }
-  | { type: 'RESULT_FAIL'; message: string; punishment?: string }
+  | {
+    type: 'RESULT_FAIL';
+    message: string;
+    punishment?: string;
+    punishmentPhrase?: string;
+    punishmentReps?: number;
+  }
   | { type: 'RESULT_PASS'; message: string }
   | { type: 'CHALLENGE_LOADED'; challenge: { language: string; code: string; instructions: string } }
   | { type: 'CALL_REQUESTED' }

@@ -144,6 +144,7 @@ async function openSergeantWorkflow(
   context: vscode.ExtensionContext,
   reason: string
 ): Promise<void> {
+  let panelInitializedThisRun = false;
   try {
     // If a locked session is already active, just bring it back.
     // This preserves mission progress when the user closes/reopens.
@@ -160,8 +161,13 @@ async function openSergeantWorkflow(
     workflowInFlight = true;
 
     console.log(`[Code Sergeant] Triggered by ${reason}`);
+    await clearPersistedPanelState(context);
+
     const port = await findAvailablePort();
     const serverUrl = `http://127.0.0.1:${port}`;
+    panelLockEnabled = true;
+    createOrRevealLockedPanel(context);
+    panelInitializedThisRun = true;
     await startServer(context, port);
     await waitForServer(`${serverUrl}/health`);
     const dir = resolveActiveWorkingDirectory();
@@ -196,16 +202,17 @@ async function openSergeantWorkflow(
     console.log('[Code Sergeant] Agent running in background, challenge will arrive via polling');
 
     // Fresh run should start from boot/training flow, not prior mission state.
-    await clearPersistedPanelState(context);
-    panelLockEnabled = true;
     lastServerUrl = serverUrl;
-    createOrRevealLockedPanel(context);
     startBackendPolling(serverUrl);
   } catch (error) {
     panelLockEnabled = false;
+    if (panelInitializedThisRun && currentPanel) {
+      currentPanel.dispose();
+    }
     workflowInFlight = false;
     stopBackendPolling();
     killServer();
+    lastServerUrl = null;
     const msg = error instanceof Error ? error.message : String(error);
     void vscode.window.showErrorMessage(
       `Code Sergeant failed to start: ${msg}`
@@ -504,7 +511,7 @@ function createOrRevealLockedPanel(
 
   currentPanel.onDidDispose(() => {
     currentPanel = null;
-    if (panelLockEnabled && lastServerUrl) {
+    if (panelLockEnabled) {
       setTimeout(() => createOrRevealLockedPanel(context), 50);
       return;
     }
@@ -956,6 +963,7 @@ function killServer(): void {
     }
     serverProcess = null;
   }
+  lastServerUrl = null;
 }
 
 function getNonce(): string {

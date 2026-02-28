@@ -4,7 +4,7 @@ import type { UIState } from '../types';
 interface ActionButtonProps {
   uiState: UIState;
   onSubmit: () => void;
-  onRetry: () => void;
+  onResubmit: () => void;
   onNextMission: () => void;
   canRetryAfterPunishment: boolean;
 }
@@ -21,7 +21,7 @@ interface ActionButtonProps {
 const ActionButton: React.FC<ActionButtonProps> = ({
   uiState,
   onSubmit,
-  onRetry,
+  onResubmit,
   onNextMission,
   canRetryAfterPunishment,
 }) => {
@@ -34,6 +34,14 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       label = 'STANDBY...';
       disabled = true;
       break;
+    case 'BUG_ALERT':
+      label = 'SCANNING FOR BUGS';
+      disabled = true;
+      break;
+    case 'BRIEFING_HOLD':
+      label = 'AWAITING ORDERS';
+      disabled = true;
+      break;
     case 'IDLE':
       label = '⚔ SUBMIT FIX';
       onClick = onSubmit;
@@ -44,9 +52,9 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       break;
     case 'RESULT_FAIL':
       label = canRetryAfterPunishment
-        ? '↻ TRY AGAIN, RECRUIT'
+        ? '↻ RESUBMIT FIX'
         : 'PUNISHMENT IN PROGRESS';
-      onClick = onRetry;
+      onClick = onResubmit;
       disabled = !canRetryAfterPunishment;
       break;
     case 'RESULT_PASS':
