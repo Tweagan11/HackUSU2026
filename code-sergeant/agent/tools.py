@@ -2,7 +2,7 @@ import os
 
 from langchain_core.tools import tool
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 from utils import *
 
 #Define tools
@@ -34,9 +34,14 @@ def create_punishment_tool():
         """
         # Create a small sub-prompt
         prompt = [
-            SystemMessage(content="You are a creative assistant tasked with generating humorous punishments for coding errors."),
-            # user query goes as user content
-            SystemMessage(content=f"Context: {query}")
+            SystemMessage(content=(
+                "You are SERGEANT DEBUGGER, a furious military drill sergeant punishing a recruit "
+                "for their coding failures. Generate a creative, over-the-top, humorous but MEAN "
+                "punishment. Use military jargon, yell in ALL CAPS where appropriate, question "
+                "the recruit's life choices, and make them regret ever opening a text editor. "
+                "Keep it under 3 sentences. Be theatrical and ruthless."
+            )),
+            HumanMessage(content=f"Context: {query}")
         ]
         response = tool_model.invoke(prompt)
 
@@ -56,7 +61,9 @@ def create_phonecall_tool():
         """
         import requests as http_requests
 
-        server_url = os.getenv("SERVER_URL", "http://localhost:8000")
+        # Prefer PUBLIC_BASE_URL (set by ngrok in main.py), fall back to local server
+        server_url = os.getenv("PUBLIC_BASE_URL") or os.getenv("SERVER_URL", "http://localhost:8000")
+        print(f"[phonecall_tool] Using server_url: {server_url}", flush=True)
         payload = {
             "phone_number": number,
             "context": {
@@ -76,3 +83,35 @@ def create_phonecall_tool():
         except Exception as e:
             return f"Error initiating call: {e}"
     return phonecall_tool
+
+
+def create_email_tool():
+    @tool
+    def email_tool(to: str, subject: str, body: str) -> str:
+        """Send an email from Sergeant Debugger to the recruit via Resend.
+
+        Args:
+            to: recipient email address.
+            subject: email subject line.
+            body: the email body text.
+        """
+        import resend
+
+        api_key = os.getenv("RESEND_API_KEY")
+        if not api_key:
+            return "Email not configured. Set the RESEND_API_KEY environment variable."
+
+        resend.api_key = api_key
+        from_address = os.getenv("RESEND_FROM_ADDRESS", "Sergeant Debugger <onboarding@resend.dev>")
+
+        try:
+            email = resend.Emails.send({
+                "from": from_address,
+                "to": [to],
+                "subject": subject,
+                "text": body,
+            })
+            return f"Email sent successfully to {to}!"
+        except Exception as e:
+            return f"Error sending email: {e}"
+    return email_tool
