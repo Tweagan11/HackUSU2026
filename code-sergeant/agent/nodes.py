@@ -173,11 +173,11 @@ def make_grade_solution(model):
 def make_punish_node(punishment_tool):
     """Returns a punish node that calls the punishment tool directly and loops back."""
     def punish(state: dict):
-        print("I am being punished")
+        print("Generating punishment...", flush=True)
         grade = state.get("grade")
         feedback = grade.feedback if hasattr(grade, "feedback") else str(grade)
         fail_count = state.get("fail_count", 0)
-        result = "punished! ouch" # punishment_tool.invoke({"query": f"Fail #{fail_count}. {feedback}"})
+        result = punishment_tool.invoke({"query": f"Fail #{fail_count}. {feedback}"})
         print(f"\n=== PUNISHMENT ===", flush=True)
         print(result, flush=True)
         return {"punishment": result}

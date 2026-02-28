@@ -5,7 +5,6 @@
  * and the VS Code extension host.
  *
  * In production: messages flow via vscode.postMessage / window.addEventListener
- * In dev mode:   acquireVsCodeApi is undefined, mock is used instead
  * ========================================= */
 
 import type { AppAction, ExtensionMessage } from './types';
@@ -51,6 +50,11 @@ export function notifyReady() {
 /** Trigger the mission timeout on the backend */
 export function triggerTimeout() {
   postMessageToExtension('MISSION_TIMEOUT');
+}
+
+/** Ask the extension to close the webview panel (unlocks the window) */
+export function dismissPanel() {
+  postMessageToExtension('CLOSE_PANEL');
 }
 
 /**
