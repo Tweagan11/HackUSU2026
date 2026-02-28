@@ -21,7 +21,7 @@ VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")  # Your Twilio number (E.164)
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")  # Your Twili[gito number (E.164)
 
 # Public URL where Twilio can reach this server for webhooks (e.g. ngrok)
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
