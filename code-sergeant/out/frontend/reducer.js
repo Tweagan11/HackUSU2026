@@ -27,6 +27,8 @@ function addDialogue(log, text, type = 'normal') {
 exports.initialState = {
     uiState: 'BOOTING',
     code: '',
+    challengeLanguage: '',
+    missionInstructions: '',
     dialogueLog: [],
     resultMessage: '',
     punishment: '',
@@ -57,6 +59,20 @@ function appReducer(state, action) {
             };
         case 'SET_CODE':
             return { ...state, code: action.code };
+        case 'CHALLENGE_LOADED':
+            // Idempotent: skip if already loaded with the same challenge
+            if (state.code === action.code &&
+                state.challengeLanguage === action.language &&
+                state.missionInstructions === action.instructions) {
+                return state;
+            }
+            return {
+                ...state,
+                code: action.code,
+                challengeLanguage: action.language,
+                missionInstructions: action.instructions,
+                dialogueLog: addDialogue(state.dialogueLog, `MISSION BRIEFING: ${action.instructions}`),
+            };
         case 'SUBMIT_CODE':
             if (state.uiState !== 'IDLE')
                 return state;

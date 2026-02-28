@@ -286,9 +286,32 @@ body,
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(120px, 1fr) auto auto auto;
+  grid-template-rows: auto minmax(120px, 1fr) auto auto auto;
   gap: 10px;
   padding: 10px;
+}
+
+.sergeant-panel__instructions {
+  background: rgba(0, 255, 156, 0.08);
+  border: var(--border) solid var(--px-accent);
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+}
+
+.instructions-label {
+  color: var(--px-accent);
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.instructions-text {
+  color: var(--px-text);
+  font-size: 14px;
+  line-height: 1.4;
+  margin: 0;
 }
 
 .sergeant-panel__dialogue,
