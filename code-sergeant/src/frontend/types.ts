@@ -23,7 +23,7 @@ export type DialogueEntry = {
 };
 
 /** Call status for the sergeant phone call feature */
-export type CallStatus = 'idle' | 'calling' | 'in-progress' | 'ended' | 'error';
+export type CallStatus = 'idle' | 'requested' | 'calling' | 'in-progress' | 'ended' | 'error';
 
 /** Full application state managed by the reducer */
 export type AppState = {
@@ -51,16 +51,19 @@ export type AppAction =
   | { type: 'RETRY' }
   | { type: 'NEXT_MISSION' }
   | { type: 'SET_PHONE_NUMBER'; phoneNumber: string }
+  | { type: 'CALL_REQUESTED' }
   | { type: 'CALL_INITIATED'; callId: string }
   | { type: 'CALL_IN_PROGRESS' }
   | { type: 'CALL_ENDED' }
-  | { type: 'CALL_ERROR'; message: string };
+  | { type: 'CALL_ERROR'; message: string }
+  | { type: 'CALL_DISMISSED' };
 
 /** Messages received from the VS Code extension host */
 export type ExtensionMessage =
   | { type: 'ANALYZE_START' }
   | { type: 'RESULT_FAIL'; message: string; punishment?: string }
   | { type: 'RESULT_PASS'; message: string }
+  | { type: 'CALL_REQUESTED' }
   | { type: 'CALL_INITIATED'; callId: string }
   | { type: 'CALL_IN_PROGRESS' }
   | { type: 'CALL_ENDED' }

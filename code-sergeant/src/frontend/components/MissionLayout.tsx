@@ -1,5 +1,5 @@
 import React from 'react';
-import type { UIState, CallStatus, DialogueEntry } from '../types';
+import type { UIState, DialogueEntry } from '../types';
 import CodeEditor from './CodeEditor';
 import SergeantPanel from './SergeantPanel';
 
@@ -14,12 +14,6 @@ interface MissionLayoutProps {
   onSubmit: () => void;
   onRetry: () => void;
   onNextMission: () => void;
-  /** Phone call props */
-  callStatus: CallStatus;
-  callError: string;
-  phoneNumber: string;
-  onPhoneNumberChange: (phone: string) => void;
-  onCallSergeant: () => void;
 }
 
 /**
@@ -38,11 +32,6 @@ const MissionLayout: React.FC<MissionLayoutProps> = ({
   onSubmit,
   onRetry,
   onNextMission,
-  callStatus,
-  callError,
-  phoneNumber,
-  onPhoneNumberChange,
-  onCallSergeant,
 }) => {
   return (
     <div className="mission-layout">
@@ -58,11 +47,6 @@ const MissionLayout: React.FC<MissionLayoutProps> = ({
           onSubmit={onSubmit}
           onRetry={onRetry}
           onNextMission={onNextMission}
-          callStatus={callStatus}
-          callError={callError}
-          phoneNumber={phoneNumber}
-          onPhoneNumberChange={onPhoneNumberChange}
-          onCallSergeant={onCallSergeant}
         />
       </div>
     </div>

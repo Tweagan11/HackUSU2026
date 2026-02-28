@@ -107,6 +107,13 @@ function appReducer(state, action) {
         // ── Phone call actions ──────────────────────────────────
         case 'SET_PHONE_NUMBER':
             return { ...state, phoneNumber: action.phoneNumber };
+        case 'CALL_REQUESTED':
+            return {
+                ...state,
+                callStatus: 'requested',
+                callError: '',
+                dialogueLog: addDialogue(state.dialogueLog, 'THE SERGEANT NEEDS TO SPEAK TO YOU. PROVIDE YOUR NUMBER, RECRUIT.'),
+            };
         case 'CALL_INITIATED':
             return {
                 ...state,
@@ -133,6 +140,13 @@ function appReducer(state, action) {
                 callStatus: 'error',
                 callError: action.message,
                 dialogueLog: addDialogue(state.dialogueLog, `COMMS FAILURE: ${action.message}`, 'fail'),
+            };
+        case 'CALL_DISMISSED':
+            return {
+                ...state,
+                callStatus: 'idle',
+                callId: '',
+                callError: '',
             };
         default:
             return state;
