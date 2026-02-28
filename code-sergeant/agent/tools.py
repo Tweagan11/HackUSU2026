@@ -115,3 +115,21 @@ def create_email_tool():
         except Exception as e:
             return f"Error sending email: {e}"
     return email_tool
+
+
+def create_write_lines_tool():
+    @tool
+    def write_lines_tool(phrase: str, reps: int) -> str:
+        """Assign a write-lines punishment where the recruit must type a phrase repeatedly before they can retry.
+        Use this ONLY when the recruit's failure is particularly egregious, they keep making the same mistake,
+        or their attitude needs adjustment. Do NOT use this every single time — save it for when they truly
+        deserve extra discipline. A good sergeant knows when to push harder.
+
+        Args:
+            phrase: The exact phrase the recruit must type repeatedly (e.g. "I WILL NOT USE EVAL"). Make it relevant to their mistake.
+            reps: How many times they must type it (between 3 and 20). Scale with severity.
+        """
+        import json as _json
+        reps = max(1, min(20, reps))
+        return _json.dumps({"phrase": phrase.upper(), "reps": reps})
+    return write_lines_tool

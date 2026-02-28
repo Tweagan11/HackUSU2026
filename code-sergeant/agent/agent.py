@@ -7,7 +7,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from tools import get_rag_tool
 from utils import build_vector_store
-from tools import *
+from tools import create_punishment_tool, create_email_tool, create_phonecall_tool, create_write_lines_tool
 from state import ExtendedState
 from langgraph.checkpoint.memory import MemorySaver
 from nodes import make_llm_call, make_tool_node, make_extract_bugs, make_generate_challenge, wait_for_user, make_grade_solution, make_punish_node
@@ -45,6 +45,7 @@ class Agent:
             punishment_tool=create_punishment_tool(),
             email_tool=create_email_tool(),
             phonecall_tool=create_phonecall_tool(),
+            write_lines_tool=create_write_lines_tool(),
         )
 
         print("Initialize agent")

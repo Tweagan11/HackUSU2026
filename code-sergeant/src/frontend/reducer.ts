@@ -127,7 +127,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const punishmentRequiredReps =
         typeof action.punishmentReps === 'number' && Number.isFinite(action.punishmentReps) && action.punishmentReps > 0
           ? action.punishmentReps
-          : PUNISHMENT_REQUIRED_REPS;
+          : 0;
       const punishmentOverride = action.punishment?.trim();
       const punishmentText = punishmentOverride && punishmentOverride.length > 0
         ? punishmentOverride
