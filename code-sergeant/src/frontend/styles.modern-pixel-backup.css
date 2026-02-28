@@ -350,7 +350,7 @@ html, body, #root {
 }
 
 /* =========================================
-   SERGEANT FACE (image-based)
+   SERGEANT FACE
    ========================================= */
 .sergeant-face {
   display: flex;
@@ -358,27 +358,136 @@ html, body, #root {
   gap: 8px;
 }
 
-.sergeant-face__image {
+.sergeant-face__frame {
   width: 48px;
   height: 48px;
-  image-rendering: pixelated;
+  background: #09100d;
+  border: 2px solid #2a3a31;
+  box-shadow:
+    inset 0 0 0 2px #0f1b16,
+    2px 2px 0 #000;
+  overflow: hidden;
 }
 
-/* label still shown underneath */
-.sergeant-face__label {
-  font-size: 12px;
-  font-weight: bold;
-  text-transform: uppercase;
+.sergeant-face__portrait {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.03) 0px,
+      rgba(255, 255, 255, 0.03) 2px,
+      transparent 2px,
+      transparent 4px
+    ),
+    #16231b;
 }
 
-/* mood-specific container classes are available if you want to
-   apply effects such as shaking or tinting per mood */
-.sergeant-face--idle {}
-.sergeant-face--suspicious {}
-.sergeant-face--yelling {}
-.sergeant-face--angry {}
-.sergeant-face--disappointed {}
-.sergeant-face--proud {}
+.sergeant-face__hat {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  width: 32px;
+  height: 8px;
+  background: #2d3d33;
+  border-bottom: 2px solid #101912;
+}
+
+.sergeant-face__brow {
+  position: absolute;
+  top: 15px;
+  left: 10px;
+  width: 28px;
+  height: 4px;
+  background: #6f3f3f;
+}
+
+.sergeant-face__eyes {
+  position: absolute;
+  top: 20px;
+  left: 11px;
+  width: 26px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.sergeant-face__eye {
+  width: 8px;
+  height: 4px;
+  background: #f2f3ec;
+  border-top: 2px solid #0e130f;
+}
+
+.sergeant-face__nose {
+  position: absolute;
+  top: 24px;
+  left: 22px;
+  width: 4px;
+  height: 7px;
+  background: #9a7a58;
+}
+
+.sergeant-face__mouth {
+  position: absolute;
+  top: 33px;
+  left: 16px;
+  width: 16px;
+  height: 3px;
+  background: #3a1111;
+}
+
+.sergeant-face__jaw {
+  position: absolute;
+  top: 37px;
+  left: 11px;
+  width: 26px;
+  height: 8px;
+  background: #7f674f;
+}
+
+.sergeant-face--idle .sergeant-face__mouth {
+  width: 12px;
+  left: 18px;
+  background: #442b20;
+}
+
+.sergeant-face--yelling .sergeant-face__mouth {
+  width: 18px;
+  height: 5px;
+  left: 15px;
+  background: #2b0505;
+}
+
+.sergeant-face--angry .sergeant-face__brow {
+  top: 14px;
+  left: 9px;
+  width: 30px;
+  background: #8f2e2e;
+}
+
+.sergeant-face--angry .sergeant-face__mouth {
+  width: 18px;
+  left: 15px;
+  background: #1f0303;
+}
+
+.sergeant-face--disappointed .sergeant-face__mouth {
+  width: 14px;
+  left: 17px;
+  background: #1b1f1c;
+}
+
+.sergeant-face--proud .sergeant-face__mouth {
+  width: 10px;
+  left: 19px;
+  background: #5b2f2f;
+}
+
+.sergeant-face--yelling .sergeant-face__portrait,
+.sergeant-face--angry .sergeant-face__portrait {
+  animation: faceFrame 0.12s steps(2, end) infinite;
+}
 
 .sergeant-face--angry .sergeant-face__frame {
   border-color: #7d3535;

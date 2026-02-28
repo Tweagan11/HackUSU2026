@@ -17,7 +17,7 @@ const BootScreen: React.FC = () => {
           <div
             key={i}
             className="boot-screen__line"
-            style={{ animationDelay: `${i * 0.35}s` }}
+            style={{ animationDelay: `${i * 0.6}s` }}
           >
             &gt; {line}
           </div>
