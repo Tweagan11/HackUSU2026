@@ -60,6 +60,12 @@ function appReducer(state, action) {
         case 'SET_CODE':
             return { ...state, code: action.code };
         case 'CHALLENGE_LOADED':
+            // Idempotent: skip if already loaded with the same challenge
+            if (state.code === action.code &&
+                state.challengeLanguage === action.language &&
+                state.missionInstructions === action.instructions) {
+                return state;
+            }
             return {
                 ...state,
                 code: action.code,
