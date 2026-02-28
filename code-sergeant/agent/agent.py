@@ -1,4 +1,5 @@
 # Load OPENAI API KEYS
+import os
 from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, START, END
 from typing import Literal
@@ -8,13 +9,18 @@ from utils import build_vector_store
 from state import ExtendedState
 from langgraph.checkpoint.memory import MemorySaver
 from nodes import make_llm_call, make_tool_node, make_extract_bugs, make_generate_challenge, wait_for_user, make_grade_solution
-from IPython.display import Image, display
+try:
+    from IPython.display import Image, display
+    _HAS_IPYTHON = True
+except ImportError:
+    _HAS_IPYTHON = False
 
 
 class Agent:
     def __init__(self, path):
-        # Loading API keys
-        load_dotenv("../../")
+        # Loading API keys — find .env relative to this file's directory
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '.env')
+        load_dotenv(env_path)
 
         print("Build vector store")
         build_vector_store(path)
@@ -71,7 +77,11 @@ class Agent:
         from langchain.messages import HumanMessage
 
         print("Display the agent flow")
-        display(Image(self.agent.get_graph(xray=True).draw_mermaid_png()))
+        if _HAS_IPYTHON:
+            try:
+                display(Image(self.agent.get_graph(xray=True).draw_mermaid_png()))
+            except Exception:
+                pass  # skip graph display when not in a notebook
         print(self.agent.get_graph().draw_ascii())
 
         # Run until the interrupt in wait_for_user

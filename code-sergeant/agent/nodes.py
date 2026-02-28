@@ -1,5 +1,4 @@
-from langchain.messages import SystemMessage, ToolMessage
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, ToolMessage
 from pydantic import BaseModel
 from langgraph.types import interrupt
 
