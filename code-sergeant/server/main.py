@@ -2,10 +2,13 @@ import asyncio
 import random
 from datetime import datetime
 import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../agent'))
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Body
 from fastapi.websockets import WebSocketDisconnect
 import uvicorn
+import json
 
 load_dotenv()
 
@@ -44,18 +47,18 @@ def health():
 
 @app.post("/start")
 def start(data: dict):
-    agent = Agent("../../buggy_code")
+
+    path = data["workspace_dir"]
+    print(path)
+
+    agent = Agent(path)
+
     response = agent.run()
+
     code_challenge = response.get("challenge")
     print(code_challenge)
-    global workspace_files
-    workspace_files = data["files"]
-    drill_state["animation"] = "ready"
-    drill_state["successCriteria"] = 0
-    drill_state["isComplete"] = False
-    drill_state["message"] = "New drill initialized"
-    drill_state["updatedAt"] = datetime.utcnow().isoformat()
-    return {"ok":True, "state": drill_state}
+    
+    return {"ok":True, "state": code_challenge}
 
 
 @app.post("/submit")
@@ -98,4 +101,4 @@ async def ws_updates(websocket: WebSocket):
 
 if __name__ == "__main__":
     port = int(os.getenv("CODE_SERGEANT_PORT", "8000"))
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
