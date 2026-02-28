@@ -28,12 +28,11 @@ class Agent:
 
         print("Build vector store")
         build_vector_store(path)
-        tool = get_rag_tool()
 
         tools = [get_rag_tool(), create_punishment_tool(), create_phonecall_tool()]
 
         model = init_chat_model(
-            "openai:o4-mini",
+            "openai:gpt-4.1-mini",
         )
         model_with_tools = model.bind_tools(tools)
 
