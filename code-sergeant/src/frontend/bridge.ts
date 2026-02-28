@@ -93,7 +93,13 @@ export function createMessageListener(
         dispatch({ type: 'ANALYZE_START' });
         break;
       case 'RESULT_FAIL':
-        dispatch({ type: 'RESULT_FAIL', message: message.message, punishment: ('punishment' in message ? message.punishment : undefined) });
+        dispatch({
+          type: 'RESULT_FAIL',
+          message: message.message,
+          punishment: 'punishment' in message ? message.punishment : undefined,
+          punishmentPhrase: 'punishmentPhrase' in message ? message.punishmentPhrase : undefined,
+          punishmentReps: 'punishmentReps' in message ? message.punishmentReps : undefined,
+        });
         break;
       case 'RESULT_PASS':
         dispatch({ type: 'RESULT_PASS', message: message.message });

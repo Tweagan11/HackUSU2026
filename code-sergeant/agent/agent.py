@@ -1,7 +1,5 @@
 # Load OPENAI API KEYS
 import os
-os.environ["LANGCHAIN_TRACING_V2"] = "false"
-os.environ["LANGCHAIN_TELEMETRY"] = "false"
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START, END

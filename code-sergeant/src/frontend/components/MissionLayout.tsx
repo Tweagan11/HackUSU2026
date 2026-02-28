@@ -12,11 +12,13 @@ interface MissionLayoutProps {
   missionInstructions: string;
   dialogueLog: DialogueEntry[];
   punishment: string;
+  punishmentPhrase: string;
+  punishmentRequiredReps: number;
   punishmentProgress: number;
   showPunishment: boolean;
   onPunishmentLineCompleted: () => void;
   onSubmit: () => void;
-  onRetry: () => void;
+  onResubmit: () => void;
   onNextMission: () => void;
   canRetryAfterPunishment: boolean;
 }
@@ -35,11 +37,13 @@ const MissionLayout: React.FC<MissionLayoutProps> = ({
   missionInstructions,
   dialogueLog,
   punishment,
+  punishmentPhrase,
+  punishmentRequiredReps,
   punishmentProgress,
   showPunishment,
   onPunishmentLineCompleted,
   onSubmit,
-  onRetry,
+  onResubmit,
   onNextMission,
   canRetryAfterPunishment,
 }) => {
@@ -59,11 +63,13 @@ const MissionLayout: React.FC<MissionLayoutProps> = ({
           missionInstructions={missionInstructions}
           dialogueLog={dialogueLog}
           punishment={punishment}
+          punishmentPhrase={punishmentPhrase}
+          punishmentRequiredReps={punishmentRequiredReps}
           punishmentProgress={punishmentProgress}
           showPunishment={showPunishment}
           onPunishmentLineCompleted={onPunishmentLineCompleted}
           onSubmit={onSubmit}
-          onRetry={onRetry}
+          onResubmit={onResubmit}
           onNextMission={onNextMission}
           canRetryAfterPunishment={canRetryAfterPunishment}
         />
