@@ -1,10 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { playWarningKlaxon } from '../speechBlip';
 
 /**
  * Cinematic warning that the sergeant suspects lurking bugs.
  * Renders between the boot screen and training splash.
+ * Plays a military klaxon alarm on mount.
  */
 const SuspicionAlert: React.FC = () => {
+    // Play warning klaxon alarm when suspicion alert appears
+    useEffect(() => {
+        const cleanup = playWarningKlaxon();
+        return cleanup;
+    }, []);
+
     return (
         <div className="suspicion-alert" role="alert" aria-live="assertive">
             <div className="suspicion-alert__badge">CODE WATCH</div>
