@@ -36,6 +36,81 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const jsx_runtime_1 = require("react/jsx-runtime");
 const react_1 = require("react");
 const monaco = __importStar(require("monaco-editor"));
+let themeRegistered = false;
+function ensureEditorTheme() {
+    if (themeRegistered)
+        return;
+    monaco.editor.defineTheme('code-sergeant-theme', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+            { token: 'comment', foreground: '6A9955' },
+            { token: 'keyword', foreground: 'C586C0' },
+            { token: 'number', foreground: 'B5CEA8' },
+            { token: 'string', foreground: 'CE9178' },
+            { token: 'regexp', foreground: 'D16969' },
+            { token: 'type', foreground: '4EC9B0' },
+            { token: 'delimiter', foreground: 'D4D4D4' },
+            { token: 'operator', foreground: 'D4D4D4' },
+            { token: 'function', foreground: 'DCDCAA' },
+            { token: 'variable', foreground: '9CDCFE' },
+        ],
+        colors: {
+            'editor.background': '#0c1013',
+            'editor.foreground': '#d7f6e6',
+            'editorLineNumber.foreground': '#6b8088',
+            'editorLineNumber.activeForeground': '#b7cfd5',
+            'editorCursor.foreground': '#71f7b5',
+            'editor.selectionBackground': '#264f78',
+            'editor.inactiveSelectionBackground': '#3a3d4155',
+        },
+    });
+    themeRegistered = true;
+}
+function detectLanguageFromCode(code) {
+    const src = code.toLowerCase();
+    if (/^\s*#include\s+<\w+/m.test(src))
+        return 'cpp';
+    if (/^\s*package\s+[\w.]+\s*;?/m.test(src) && /\bclass\s+\w+/m.test(src))
+        return 'java';
+    if (/^\s*def\s+\w+\s*\(/m.test(src) || /\bimport\s+\w+/m.test(src))
+        return 'python';
+    if (/\bfunc\s+\w+\s*\(/m.test(src) || /\bpackage\s+main\b/m.test(src))
+        return 'go';
+    if (/\bfn\s+\w+\s*\(/m.test(src) || /\blet\s+mut\b/m.test(src))
+        return 'rust';
+    if (/\bconsole\.log\b|\bfunction\b|=>/.test(src))
+        return 'javascript';
+    if (/\bconst\b|\blet\b|\binterface\b|\btype\b/.test(src))
+        return 'typescript';
+    if (/^\s*<([a-z][\w-]*)(\s|>)/m.test(src))
+        return 'html';
+    if (/^\s*\{[\s\S]*\}\s*$/m.test(src) && /"\w+"\s*:/.test(src))
+        return 'json';
+    return 'plaintext';
+}
+function normalizeLanguage(language) {
+    const mapping = {
+        javascriptreact: 'javascript',
+        typescriptreact: 'typescript',
+        shellscript: 'shell',
+        plaintext: 'plaintext',
+    };
+    return mapping[language] ?? language;
+}
+function applyLanguage(editor, code, preferredLanguage) {
+    const model = editor.getModel();
+    if (!model)
+        return;
+    const preferred = normalizeLanguage(preferredLanguage);
+    const detected = detectLanguageFromCode(code);
+    const candidates = [preferred, detected, 'plaintext'];
+    const availableIds = new Set(monaco.languages.getLanguages().map((lang) => lang.id));
+    const nextLanguage = candidates.find((candidate) => availableIds.has(candidate)) ?? 'plaintext';
+    if (model.getLanguageId() !== nextLanguage) {
+        monaco.editor.setModelLanguage(model, nextLanguage);
+    }
+}
 /**
  * Monaco Editor wrapper for the VS Code webview.
  * Uses the vs-dark theme to match VS Code.
@@ -44,7 +119,7 @@ const monaco = __importStar(require("monaco-editor"));
  * Worker-free: Monaco's Monarch tokenizer handles syntax highlighting
  * in the main thread. Advanced features (IntelliSense) are disabled.
  */
-const CodeEditor = ({ value, onChange, readOnly }) => {
+const CodeEditor = ({ value, onChange, language, readOnly, }) => {
     const containerRef = (0, react_1.useRef)(null);
     const editorRef = (0, react_1.useRef)(null);
     const isSettingValue = (0, react_1.useRef)(false);
@@ -59,10 +134,11 @@ const CodeEditor = ({ value, onChange, readOnly }) => {
         if (!containerRef.current || useFallback)
             return;
         try {
+            ensureEditorTheme();
             const editor = monaco.editor.create(containerRef.current, {
                 value,
-                language: 'javascript',
-                theme: 'vs-dark',
+                language: 'plaintext',
+                theme: 'code-sergeant-theme',
                 readOnly,
                 minimap: { enabled: false },
                 fontSize: 14,
@@ -80,12 +156,15 @@ const CodeEditor = ({ value, onChange, readOnly }) => {
                 acceptSuggestionOnEnter: 'off',
                 tabCompletion: 'off',
                 wordBasedSuggestions: 'off',
+                'semanticHighlighting.enabled': false,
             });
             editor.onDidChangeModelContent(() => {
+                applyLanguage(editor, editor.getValue(), language);
                 if (!isSettingValue.current) {
                     onChangeRef.current(editor.getValue());
                 }
             });
+            applyLanguage(editor, value, language);
             editorRef.current = editor;
             return () => {
                 editor.dispose();
@@ -96,7 +175,7 @@ const CodeEditor = ({ value, onChange, readOnly }) => {
             console.warn('[CodeEditor] Monaco failed to initialize, using fallback textarea:', err);
             setUseFallback(true);
         }
-    }, [useFallback]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [useFallback, language]); // eslint-disable-line react-hooks/exhaustive-deps
     // Sync readOnly prop
     (0, react_1.useEffect)(() => {
         editorRef.current?.updateOptions({ readOnly });
@@ -109,7 +188,10 @@ const CodeEditor = ({ value, onChange, readOnly }) => {
             editor.setValue(value);
             isSettingValue.current = false;
         }
-    }, [value]);
+        if (editor) {
+            applyLanguage(editor, value, language);
+        }
+    }, [value, language]);
     // Fallback textarea
     if (useFallback) {
         return ((0, jsx_runtime_1.jsx)("textarea", { className: "code-editor-fallback", value: value, onChange: (e) => onChange(e.target.value), readOnly: readOnly, spellCheck: false, placeholder: "// Write your fix here..." }));

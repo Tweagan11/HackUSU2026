@@ -70,14 +70,44 @@ export function activate(context: vscode.ExtensionContext): void {
       triggerSergeantIfNeeded(context, `terminal:${commandLine}`);
     });
 
+  const terminalOpenListener = vscode.window.onDidOpenTerminal((terminal) => {
+    triggerSergeantIfNeeded(context, `terminal-open:${terminal.name}`);
+  });
+
+  const activeTerminalListener = vscode.window.onDidChangeActiveTerminal(
+    (terminal) => {
+      if (!terminal) {
+        return;
+      }
+      triggerSergeantIfNeeded(context, `terminal-focus:${terminal.name}`);
+    }
+  );
+
   const debugSessionListener = vscode.debug.onDidStartDebugSession(() => {
     triggerSergeantIfNeeded(context, 'debug');
   });
 
+  const taskStartListener = vscode.tasks.onDidStartTask((event) => {
+    triggerSergeantIfNeeded(context, `task:${event.execution.task.name}`);
+  });
+
+  const taskProcessStartListener = vscode.tasks.onDidStartTaskProcess(
+    (event) => {
+      triggerSergeantIfNeeded(
+        context,
+        `task-process:${event.execution.task.name}`
+      );
+    }
+  );
+
   context.subscriptions.push(
     disposable,
     terminalExecutionListener,
-    debugSessionListener
+    terminalOpenListener,
+    activeTerminalListener,
+    debugSessionListener,
+    taskStartListener,
+    taskProcessStartListener
   );
 }
 
@@ -102,14 +132,11 @@ async function openSergeantWorkflow(
   reason: string
 ): Promise<void> {
   try {
-    if (currentPanel) {
-      // Force a full restart so latest frontend bundle/state is loaded.
-      panelLockEnabled = false;
-      currentPanel.dispose();
-      currentPanel = null;
-      stopBackendPolling();
-      killServer();
-      lastServerUrl = null;
+    // If a locked session is already active, just bring it back.
+    // This preserves mission progress when the user closes/reopens.
+    if (panelLockEnabled && currentPanel) {
+      createOrRevealLockedPanel(context);
+      return;
     }
 
     console.log(`[Code Sergeant] Triggered by ${reason}`);
@@ -143,6 +170,7 @@ async function openSergeantWorkflow(
       throw new Error('Server returned an invalid start payload');
     }
 
+    // Fresh run should start from boot/training flow, not prior mission state.
     await clearPersistedPanelState(context);
     panelLockEnabled = true;
     lastServerUrl = serverUrl;
@@ -230,6 +258,27 @@ function pathFromUri(uri: vscode.Uri): string {
   return uri.scheme === 'file' ? uri.fsPath : uri.path;
 }
 
+function resolveActiveEditorLanguageId(): string {
+  const rawLanguageId = vscode.window.activeTextEditor?.document.languageId;
+  if (!rawLanguageId) {
+    return 'plaintext';
+  }
+
+  const mapping: Record<string, string> = {
+    javascriptreact: 'javascript',
+    typescriptreact: 'typescript',
+    shellscript: 'shell',
+    c: 'cpp',
+    'c++': 'cpp',
+    cpp: 'cpp',
+    'objective-c': 'objective-c',
+    'objective-cpp': 'objective-c',
+    csharp: 'csharp',
+  };
+
+  return mapping[rawLanguageId] ?? rawLanguageId;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Python server management                                           */
 /* ------------------------------------------------------------------ */
@@ -315,7 +364,8 @@ function createOrRevealLockedPanel(
   currentPanel.webview.html = getWebviewHtml(
     currentPanel.webview,
     context.extensionUri,
-    persistedPanelState
+    persistedPanelState,
+    resolveActiveEditorLanguageId()
   );
 
   currentPanel.webview.onDidReceiveMessage(
@@ -484,13 +534,18 @@ async function handleWebviewMessage(
 function getWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
-  initialState: PersistedPanelState | null
+  initialState: PersistedPanelState | null,
+  editorLanguage: string
 ): string {
   const scriptUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'webview.js')
   );
   const nonce = getNonce();
   const serializedInitialState = JSON.stringify(initialState ?? null).replace(
+    /</g,
+    '\\u003c'
+  );
+  const serializedEditorLanguage = JSON.stringify(editorLanguage ?? 'plaintext').replace(
     /</g,
     '\\u003c'
   );
@@ -516,6 +571,7 @@ function getWebviewHtml(
   <div id="root"></div>
   <script nonce="${nonce}">
     window.__CODE_SERGEANT_INITIAL_STATE__ = ${serializedInitialState};
+    window.__CODE_SERGEANT_EDITOR_LANGUAGE__ = ${serializedEditorLanguage};
   </script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

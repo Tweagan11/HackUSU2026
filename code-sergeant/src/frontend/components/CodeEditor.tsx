@@ -4,7 +4,82 @@ import * as monaco from 'monaco-editor';
 interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
+  language: string;
   readOnly: boolean;
+}
+
+let themeRegistered = false;
+
+function ensureEditorTheme(): void {
+  if (themeRegistered) return;
+  monaco.editor.defineTheme('code-sergeant-theme', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '6A9955' },
+      { token: 'keyword', foreground: 'C586C0' },
+      { token: 'number', foreground: 'B5CEA8' },
+      { token: 'string', foreground: 'CE9178' },
+      { token: 'regexp', foreground: 'D16969' },
+      { token: 'type', foreground: '4EC9B0' },
+      { token: 'delimiter', foreground: 'D4D4D4' },
+      { token: 'operator', foreground: 'D4D4D4' },
+      { token: 'function', foreground: 'DCDCAA' },
+      { token: 'variable', foreground: '9CDCFE' },
+    ],
+    colors: {
+      'editor.background': '#0c1013',
+      'editor.foreground': '#d7f6e6',
+      'editorLineNumber.foreground': '#6b8088',
+      'editorLineNumber.activeForeground': '#b7cfd5',
+      'editorCursor.foreground': '#71f7b5',
+      'editor.selectionBackground': '#264f78',
+      'editor.inactiveSelectionBackground': '#3a3d4155',
+    },
+  });
+  themeRegistered = true;
+}
+
+function detectLanguageFromCode(code: string): string {
+  const src = code.toLowerCase();
+  if (/^\s*#include\s+<\w+/m.test(src)) return 'cpp';
+  if (/^\s*package\s+[\w.]+\s*;?/m.test(src) && /\bclass\s+\w+/m.test(src)) return 'java';
+  if (/^\s*def\s+\w+\s*\(/m.test(src) || /\bimport\s+\w+/m.test(src)) return 'python';
+  if (/\bfunc\s+\w+\s*\(/m.test(src) || /\bpackage\s+main\b/m.test(src)) return 'go';
+  if (/\bfn\s+\w+\s*\(/m.test(src) || /\blet\s+mut\b/m.test(src)) return 'rust';
+  if (/\bconsole\.log\b|\bfunction\b|=>/.test(src)) return 'javascript';
+  if (/\bconst\b|\blet\b|\binterface\b|\btype\b/.test(src)) return 'typescript';
+  if (/^\s*<([a-z][\w-]*)(\s|>)/m.test(src)) return 'html';
+  if (/^\s*\{[\s\S]*\}\s*$/m.test(src) && /"\w+"\s*:/.test(src)) return 'json';
+  return 'plaintext';
+}
+
+function normalizeLanguage(language: string): string {
+  const mapping: Record<string, string> = {
+    javascriptreact: 'javascript',
+    typescriptreact: 'typescript',
+    shellscript: 'shell',
+    plaintext: 'plaintext',
+  };
+  return mapping[language] ?? language;
+}
+
+function applyLanguage(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  code: string,
+  preferredLanguage: string
+): void {
+  const model = editor.getModel();
+  if (!model) return;
+  const preferred = normalizeLanguage(preferredLanguage);
+  const detected = detectLanguageFromCode(code);
+  const candidates = [preferred, detected, 'plaintext'];
+  const availableIds = new Set(monaco.languages.getLanguages().map((lang) => lang.id));
+  const nextLanguage =
+    candidates.find((candidate) => availableIds.has(candidate)) ?? 'plaintext';
+  if (model.getLanguageId() !== nextLanguage) {
+    monaco.editor.setModelLanguage(model, nextLanguage);
+  }
 }
 
 /**
@@ -15,7 +90,12 @@ interface CodeEditorProps {
  * Worker-free: Monaco's Monarch tokenizer handles syntax highlighting
  * in the main thread. Advanced features (IntelliSense) are disabled.
  */
-const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, readOnly }) => {
+const CodeEditor: React.FC<CodeEditorProps> = ({
+  value,
+  onChange,
+  language,
+  readOnly,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const isSettingValue = useRef(false);
@@ -32,10 +112,11 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, readOnly }) =>
     if (!containerRef.current || useFallback) return;
 
     try {
+      ensureEditorTheme();
       const editor = monaco.editor.create(containerRef.current, {
         value,
-        language: 'javascript',
-        theme: 'vs-dark',
+        language: 'plaintext',
+        theme: 'code-sergeant-theme',
         readOnly,
         minimap: { enabled: false },
         fontSize: 14,
@@ -53,13 +134,17 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, readOnly }) =>
         acceptSuggestionOnEnter: 'off',
         tabCompletion: 'off',
         wordBasedSuggestions: 'off',
+        'semanticHighlighting.enabled': false,
       });
 
       editor.onDidChangeModelContent(() => {
+        applyLanguage(editor, editor.getValue(), language);
         if (!isSettingValue.current) {
           onChangeRef.current(editor.getValue());
         }
       });
+
+      applyLanguage(editor, value, language);
 
       editorRef.current = editor;
 
@@ -71,7 +156,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, readOnly }) =>
       console.warn('[CodeEditor] Monaco failed to initialize, using fallback textarea:', err);
       setUseFallback(true);
     }
-  }, [useFallback]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [useFallback, language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync readOnly prop
   useEffect(() => {
@@ -86,7 +171,10 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, readOnly }) =>
       editor.setValue(value);
       isSettingValue.current = false;
     }
-  }, [value]);
+    if (editor) {
+      applyLanguage(editor, value, language);
+    }
+  }, [value, language]);
 
   // Fallback textarea
   if (useFallback) {

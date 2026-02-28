@@ -4,7 +4,7 @@
  * Deterministic reducer managing all UI state transitions.
  *
  * Transitions:
- *   BOOTING → IDLE
+ *   BOOTING → TRAINING_SPLASH → IDLE
  *   IDLE → ANALYZING (on submit)
  *   ANALYZING → RESULT_FAIL | RESULT_PASS (on message)
  *   RESULT_FAIL → IDLE (on retry)
@@ -12,7 +12,7 @@
  * ========================================= */
 
 import type { AppState, AppAction, DialogueEntry } from './types';
-import { PUNISHMENTS, DIALOGUE } from './config';
+import { DIALOGUE, PUNISHMENT_PHRASE, PUNISHMENT_REQUIRED_REPS } from './config';
 
 /** Pick a random item from an array */
 function randomItem<T>(arr: readonly T[]): T {
@@ -35,6 +35,7 @@ export const initialState: AppState = {
   dialogueLog: [],
   resultMessage: '',
   punishment: '',
+  punishmentProgress: 0,
   attemptCount: 0,
   callStatus: 'idle',
   callId: '',
@@ -47,6 +48,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'BOOT_COMPLETE':
       if (state.uiState !== 'BOOTING') return state;
+      return {
+        ...state,
+        uiState: 'TRAINING_SPLASH',
+      };
+
+    case 'TRAINING_SPLASH_COMPLETE':
+      if (state.uiState !== 'TRAINING_SPLASH') return state;
       return {
         ...state,
         uiState: 'IDLE',
@@ -81,12 +89,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         uiState: 'RESULT_FAIL',
         resultMessage: action.message,
-        punishment: action.punishment || randomItem(PUNISHMENTS),
+        punishment: `TYPE "${PUNISHMENT_PHRASE}" ${PUNISHMENT_REQUIRED_REPS} TIMES.`,
+        punishmentProgress: 0,
         attemptCount: state.attemptCount + 1,
         dialogueLog: addDialogue(
           state.dialogueLog,
           `${randomItem(DIALOGUE.fail)} ${action.message}`,
           'fail'
+        ),
+      };
+
+    case 'PUNISHMENT_LINE_COMPLETED':
+      if (state.uiState !== 'RESULT_FAIL') return state;
+      return {
+        ...state,
+        punishmentProgress: Math.min(
+          state.punishmentProgress + 1,
+          PUNISHMENT_REQUIRED_REPS
         ),
       };
 
@@ -101,10 +120,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'RETRY':
       if (state.uiState !== 'RESULT_FAIL') return state;
+      if (state.punishmentProgress < PUNISHMENT_REQUIRED_REPS) return state;
       return {
         ...state,
         uiState: 'IDLE',
         punishment: '',
+        punishmentProgress: 0,
         resultMessage: '',
         dialogueLog: addDialogue(state.dialogueLog, randomItem(DIALOGUE.idle)),
       };
