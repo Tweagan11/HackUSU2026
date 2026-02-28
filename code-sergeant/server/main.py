@@ -10,7 +10,9 @@ from fastapi.websockets import WebSocketDisconnect
 import uvicorn
 import json
 
-load_dotenv()
+# Load .env from the repo root (one level above code-sergeant/server/)
+_env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+load_dotenv(_env_path)
 
 from call_router import router as call_router
 from agent import Agent
@@ -172,4 +174,28 @@ async def ws_updates(websocket: WebSocket):
 
 if __name__ == "__main__":
     port = int(os.getenv("CODE_SERGEANT_PORT", "8000"))
+
+    # Open an ngrok tunnel so Twilio webhooks can reach this local server
+    try:
+        from pyngrok import ngrok
+
+        # If you have a reserved domain, pass it here; otherwise ngrok assigns one.
+        ngrok_domain = os.getenv("NGROK_DOMAIN")  # e.g. "solange-unreminded-northward.ngrok-free.dev"
+        options = {"bind_tls": True}
+        if ngrok_domain:
+            options["hostname"] = ngrok_domain
+
+        tunnel = ngrok.connect(port, "http", **options)
+        public_url = tunnel.public_url
+
+        # Propagate the URL to call_router at runtime
+        import call_router as _cr
+        _cr.PUBLIC_BASE_URL = public_url
+        os.environ["PUBLIC_BASE_URL"] = public_url
+
+        print(f"[ngrok] Public URL: {public_url}", flush=True)
+    except Exception as exc:
+        print(f"[ngrok] Could not start tunnel: {exc}", flush=True)
+        print("[ngrok] Falling back to PUBLIC_BASE_URL from .env (if set).", flush=True)
+
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
