@@ -15,3 +15,6 @@ class ExtendedState(MessagesState):
     challenge: dict
     user_solution: str
     grade: str
+    passed: bool
+    fail_count: int
+    punishment: str

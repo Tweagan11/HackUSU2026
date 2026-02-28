@@ -43,8 +43,8 @@ def build_vector_store(codebase_path: str, persist_directory: str = "./chroma_db
 
         splitter = RecursiveCharacterTextSplitter.from_language(
             language=splitter_lang,
-            chunk_size=200,
-            chunk_overlap=50
+            chunk_size=1000,
+            chunk_overlap=200
         )
         chunks = splitter.split_documents(documents)
 
