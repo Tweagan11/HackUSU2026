@@ -40,6 +40,11 @@ const webviewConfig = {
         // Inline fonts as data URIs (Monaco codicon, etc.)
         test: /\.(ttf|woff|woff2|eot)$/,
         type: 'asset/inline'
+      },
+      {
+        // Inline images as data URIs so they work inside the webview CSP
+        test: /\.(png|jpg|jpeg|gif|svg)$/,
+        type: 'asset/inline'
       }
     ]
   },

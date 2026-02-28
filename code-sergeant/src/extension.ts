@@ -20,6 +20,7 @@ let lastChallenge: ChallengePayload | null = null;
 let challengeSendCount = 0;
 const MAX_CHALLENGE_SENDS = 5;
 let workflowInFlight = false;
+let lastBugLocations: BugLocation[] = [];
 
 const AUTO_TRIGGER_DEBOUNCE_MS = 1500;
 const PANEL_STATE_KEY = 'codeSergeant.panelState';
@@ -34,6 +35,12 @@ interface DrillState {
   isComplete: boolean;
   message: string;
   updatedAt: string | null;
+}
+
+interface BugLocation {
+  file: string;
+  line_number: number | null;
+  description: string;
 }
 
 interface ChallengePayload {
@@ -560,6 +567,8 @@ async function handleWebviewMessage(
 ): Promise<void> {
   // --- CLOSE_PANEL: user completed the mission and wants to exit ---
   if (message.type === 'CLOSE_PANEL') {
+    // Capture bug locations before tearing down
+    const bugLocs = [...lastBugLocations];
     panelLockEnabled = false;
     workflowInFlight = false;
     stopBackendWebSocket();
@@ -567,6 +576,9 @@ async function handleWebviewMessage(
     if (currentPanel) {
       currentPanel.dispose();
     }
+    // Navigate to the original buggy line so the user can apply their knowledge
+    void navigateToBugLocation(bugLocs);
+    lastBugLocations = [];
     return;
   }
 
@@ -774,6 +786,7 @@ function getWebviewHtml(
     content="default-src 'none';
       script-src 'nonce-${nonce}' ${webview.cspSource};
       style-src 'unsafe-inline';
+      img-src ${webview.cspSource} data:;
       font-src ${webview.cspSource} data:;
       worker-src blob:;"
   />
@@ -790,6 +803,72 @@ function getWebviewHtml(
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Navigate to original bug location after mission complete           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * After the recruit passes the mission, open the original file that
+ * contained the bug and place the cursor on the problematic line.
+ * If multiple bugs were found, navigate to the first one.
+ */
+async function navigateToBugLocation(bugLocations: BugLocation[]): Promise<void> {
+  if (!bugLocations.length) {
+    return;
+  }
+
+  const bug = bugLocations[0];
+  const filePath = bug.file;
+  const lineNumber = bug.line_number ?? 1;
+  const description = bug.description ?? '';
+
+  // Try to find the file in the workspace
+  const files = await vscode.workspace.findFiles(`**/${filePath}`, '**/node_modules/**', 5);
+  if (!files.length) {
+    // Fallback: show a message with the location instead
+    void vscode.window.showInformationMessage(
+      `🎖️ Bug was in ${filePath} at line ${lineNumber}: ${description}`
+    );
+    return;
+  }
+
+  try {
+    const doc = await vscode.workspace.openTextDocument(files[0]);
+    const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.Active);
+
+    // Place cursor on the buggy line and reveal it in the center of the editor
+    const line = Math.max(0, lineNumber - 1); // VS Code lines are 0-indexed
+    const range = new vscode.Range(line, 0, line, 0);
+    editor.selection = new vscode.Selection(range.start, range.start);
+    editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+
+    // Highlight the line briefly with a decoration
+    const decoration = vscode.window.createTextEditorDecorationType({
+      backgroundColor: 'rgba(255, 90, 90, 0.3)',
+      isWholeLine: true,
+      border: '1px solid rgba(255, 90, 90, 0.6)',
+      after: {
+        contentText: `  ← Bug was here: ${description}`,
+        color: 'rgba(255, 200, 100, 0.8)',
+        fontStyle: 'italic',
+      },
+    });
+    editor.setDecorations(decoration, [range]);
+
+    // Remove the decoration after 15 seconds
+    setTimeout(() => decoration.dispose(), 15_000);
+
+    void vscode.window.showInformationMessage(
+      `🎖️ Now fix the real bug! ${filePath}:${lineNumber} — ${description}`
+    );
+  } catch (err) {
+    console.error('[Code Sergeant] Failed to navigate to bug:', err);
+    void vscode.window.showInformationMessage(
+      `🎖️ Bug was in ${filePath} at line ${lineNumber}: ${description}`
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -863,6 +942,11 @@ function startBackendWebSocket(serverUrl: string): void {
       // the webview's message listener wasn't ready on the first delivery.
       if (payload.challenge) {
         const challenge = payload.challenge as ChallengePayload;
+        // Capture original bug locations for post-mission navigation
+        if (Array.isArray(payload.bug_locations)) {
+          lastBugLocations = payload.bug_locations as BugLocation[];
+          console.log('[Code Sergeant] Bug locations:', JSON.stringify(lastBugLocations));
+        }
         if (!lastChallenge) {
           lastChallenge = challenge;
           challengeSendCount = 0;
