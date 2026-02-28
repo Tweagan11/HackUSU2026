@@ -117,16 +117,13 @@ async function openSergeantWorkflow(
     const serverUrl = `http://127.0.0.1:${port}`;
     await startServer(context, port);
     await waitForServer(`${serverUrl}/health`);
-
-    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
-    const workspacePayload = {
-      files: workspaceFolders.map((f) => f.uri.fsPath),
-    };
+    const dir = resolveActiveWorkingDirectory();
+    const json = { dir };
 
     const startResponse = await fetch(`${serverUrl}/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(workspacePayload),
+      body: JSON.stringify(json),
     });
 
     if (!startResponse.ok) {
@@ -207,6 +204,30 @@ function stripLeadingEnvAssignments(commandLine: string): string {
     remaining = remaining.slice(match[0].length).trimStart();
   }
   return remaining;
+}
+
+function resolveActiveWorkingDirectory(): string | null {
+  const activeUri = vscode.window.activeTextEditor?.document.uri;
+  if (activeUri) {
+    const activeWorkspace = vscode.workspace.getWorkspaceFolder(activeUri);
+    if (activeWorkspace) {
+      return pathFromUri(activeWorkspace.uri);
+    }
+    if (activeUri.scheme === 'file') {
+      return path.dirname(activeUri.fsPath);
+    }
+  }
+
+  const fallbackWorkspace = vscode.workspace.workspaceFolders?.[0];
+  if (fallbackWorkspace) {
+    return pathFromUri(fallbackWorkspace.uri);
+  }
+
+  return null;
+}
+
+function pathFromUri(uri: vscode.Uri): string {
+  return uri.scheme === 'file' ? uri.fsPath : uri.path;
 }
 
 /* ------------------------------------------------------------------ */
