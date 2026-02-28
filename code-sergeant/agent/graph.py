@@ -12,7 +12,6 @@ from IPython.display import Image, display
 
 
 class Agent:
-
     def __init__(self, path):
         # Loading API keys
         load_dotenv("../../")
