@@ -1,4 +1,4 @@
-from langchain.tools import tool
+from langchain_core.tools import tool
 from langchain.chat_models import init_chat_model
 from utils import *
 

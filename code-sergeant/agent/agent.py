@@ -1,6 +1,7 @@
 # Load OPENAI API KEYS
 import os
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START, END
 from typing import Literal
 from dotenv import load_dotenv
@@ -9,11 +10,11 @@ from utils import build_vector_store
 from state import ExtendedState
 from langgraph.checkpoint.memory import MemorySaver
 from nodes import make_llm_call, make_tool_node, make_extract_bugs, make_generate_challenge, wait_for_user, make_grade_solution
-try:
-    from IPython.display import Image, display
-    _HAS_IPYTHON = True
-except ImportError:
-    _HAS_IPYTHON = False
+# try:
+#     from IPython.display import Image, display
+#     _HAS_IPYTHON = True
+# except ImportError:
+#     _HAS_IPYTHON = False
 
 
 class Agent:
@@ -72,39 +73,44 @@ class Agent:
             return "tool_node"
         return "extract_bugs"
 
-    def run(self, prompt: str = "Use a tool to look through the files and find the bug."):
+    async def run(self, prompt: str = "Use a tool to look through the files and find the bug."):
         import json
-        from langchain.messages import HumanMessage
+        from langchain_core.messages import HumanMessage
 
-        print("Display the agent flow")
-        if _HAS_IPYTHON:
-            try:
-                display(Image(self.agent.get_graph(xray=True).draw_mermaid_png()))
-            except Exception:
-                pass  # skip graph display when not in a notebook
-        print(self.agent.get_graph().draw_ascii())
+        print("Running agent graph...", flush=True)
 
-        # Run until the interrupt in wait_for_user
-        result = self.agent.invoke(
+        # Run until the interrupt in wait_for_user (async)
+        result = await self.agent.ainvoke(
             {"messages": [HumanMessage(content=prompt)]},
             config=self.config
         )
 
-        for m in result["messages"]:
-            m.pretty_print()
+        # ainvoke() may not include all state fields when interrupted.
+        # Use get_state() to get the full checkpoint which includes
+        # all values written by completed nodes (including generate_challenge).
+        snapshot = self.agent.get_state(self.config)
+        full_state = snapshot.values if snapshot else {}
 
-        challenge = result.get("challenge")
+        print(f"[agent.run] invoke result keys: {list(result.keys())}", flush=True)
+        print(f"[agent.run] snapshot keys: {list(full_state.keys())}", flush=True)
+
+        challenge = full_state.get("challenge") or result.get("challenge")
         if challenge:
-            print("\n=== Coding Challenge ===")
-            print(json.dumps(challenge.model_dump(), indent=2))
+            print("\n=== Coding Challenge ===", flush=True)
+            if hasattr(challenge, 'model_dump'):
+                print(json.dumps(challenge.model_dump(), indent=2), flush=True)
+            else:
+                print(json.dumps(challenge, indent=2), flush=True)
 
-        return result
+        # Return the full state (merged) so the server gets the challenge
+        merged = {**result, **full_state}
+        return merged
 
     # Callable method designed for FastAPI server to resume flow at 
-    def resume(self, user_solution: str):
+    async def resume(self, user_solution: str):
         from langgraph.types import Command
 
-        result = self.agent.invoke(
+        result = await self.agent.ainvoke(
             Command(resume=user_solution),
             config=self.config
         )
@@ -117,7 +123,12 @@ class Agent:
     
 
 if __name__ == "__main__":
-    agent = Agent("../../buggy_code")
-    agent.run()
-    user_solution = input("\nYour solution:\n")
-    agent.resume(user_solution)
+    import asyncio
+
+    async def main():
+        agent = Agent("../../buggy_code")
+        await agent.run()
+        user_solution = input("\nYour solution:\n")
+        await agent.resume(user_solution)
+
+    asyncio.run(main())

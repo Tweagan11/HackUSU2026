@@ -50,6 +50,7 @@ let lastServerUrl = null;
 let lastAutoTriggerAt = 0;
 let backendPollTimer = null;
 let persistedPanelState = null;
+let lastChallenge = null;
 const AUTO_TRIGGER_DEBOUNCE_MS = 1500;
 const PANEL_STATE_KEY = 'codeSergeant.panelState';
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -129,6 +130,9 @@ async function openSergeantWorkflow(context, reason) {
             typeof startPayload.state !== 'object') {
             throw new Error('Server returned an invalid start payload');
         }
+        // Challenge will arrive asynchronously via /state polling — clear any stale one
+        lastChallenge = null;
+        console.log('[Code Sergeant] Agent running in background, challenge will arrive via polling');
         // Fresh run should start from boot/training flow, not prior mission state.
         await clearPersistedPanelState(context);
         panelLockEnabled = true;
@@ -392,6 +396,21 @@ async function handleWebviewMessage(message, context) {
     if (!lastServerUrl) {
         return;
     }
+    // --- WEBVIEW_READY: send cached challenge when webview is loaded ---
+    if (message.type === 'WEBVIEW_READY') {
+        console.log('[Code Sergeant] WEBVIEW_READY received. lastChallenge =', JSON.stringify(lastChallenge));
+        if (lastChallenge && currentPanel) {
+            console.log('[Code Sergeant] Sending CHALLENGE_LOADED to webview');
+            currentPanel.webview.postMessage({
+                type: 'CHALLENGE_LOADED',
+                challenge: lastChallenge,
+            });
+        }
+        else {
+            console.log('[Code Sergeant] No challenge to send (lastChallenge is null)');
+        }
+        return;
+    }
     const serverUrl = lastServerUrl;
     // --- SUBMIT_CODE ---
     if (message.type === 'SUBMIT_CODE') {
@@ -405,11 +424,24 @@ async function handleWebviewMessage(message, context) {
             if (!resp.ok) {
                 throw new Error(`Submit failed: ${resp.status} ${resp.statusText}`);
             }
+            const payload = (await resp.json());
+            if (payload.is_correct) {
+                currentPanel?.webview.postMessage({
+                    type: 'RESULT_PASS',
+                    message: payload.feedback ?? 'Mission complete. Outstanding work, soldier.',
+                });
+            }
+            else {
+                currentPanel?.webview.postMessage({
+                    type: 'RESULT_FAIL',
+                    message: payload.feedback ?? 'Incorrect. Try again, recruit.',
+                });
+            }
         }
-        catch {
+        catch (err) {
             currentPanel?.webview.postMessage({
                 type: 'RESULT_FAIL',
-                message: 'Failed to submit code to backend.',
+                message: err instanceof Error ? err.message : 'Failed to submit code to backend.',
             });
         }
         return;
@@ -572,14 +604,14 @@ function parsePersistedPanelState(value) {
 /*  Backend real-time stream (HTTP polling — no WebSocket dependency)   */
 /* ------------------------------------------------------------------ */
 /**
- * Polls the backend `/ws` endpoint via plain HTTP to get state updates.
- * Node.js in VS Code does not expose a global WebSocket, so we use
- * polling as a portable alternative.
+ * Polls the backend `/state` endpoint via plain HTTP to get state updates.
+ * When the challenge becomes available (agent finished in background),
+ * sends CHALLENGE_LOADED to the webview.
  */
 function startBackendPolling(serverUrl) {
     stopBackendPolling();
-    const pollUrl = `${serverUrl}/health`;
-    const pollIntervalMs = 3000;
+    const pollUrl = `${serverUrl}/state`;
+    const pollIntervalMs = 2000;
     backendPollTimer = setInterval(async () => {
         try {
             const resp = await fetch(pollUrl);
@@ -587,6 +619,23 @@ function startBackendPolling(serverUrl) {
                 return;
             }
             const payload = (await resp.json());
+            // Detect challenge arriving from the background agent run
+            if (payload.challenge && !lastChallenge) {
+                const challenge = payload.challenge;
+                lastChallenge = challenge;
+                console.log('[Code Sergeant] Challenge arrived via polling:', JSON.stringify(challenge));
+                currentPanel?.webview.postMessage({
+                    type: 'CHALLENGE_LOADED',
+                    challenge,
+                });
+            }
+            // If the backend signals an error, relay to the front-end
+            if (payload.animation === 'error' && typeof payload.message === 'string') {
+                currentPanel?.webview.postMessage({
+                    type: 'RESULT_FAIL',
+                    message: payload.message,
+                });
+            }
             // If the backend signals completion, relay to the front-end
             if (payload.isComplete === true) {
                 currentPanel?.webview.postMessage({

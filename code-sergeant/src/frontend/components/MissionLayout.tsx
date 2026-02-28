@@ -9,6 +9,7 @@ interface MissionLayoutProps {
   editorLanguage: string;
   readOnly: boolean;
   uiState: UIState;
+  missionInstructions: string;
   dialogueLog: DialogueEntry[];
   punishment: string;
   punishmentProgress: number;
@@ -31,6 +32,7 @@ const MissionLayout: React.FC<MissionLayoutProps> = ({
   editorLanguage,
   readOnly,
   uiState,
+  missionInstructions,
   dialogueLog,
   punishment,
   punishmentProgress,
@@ -54,6 +56,7 @@ const MissionLayout: React.FC<MissionLayoutProps> = ({
       <div className="mission-layout__panel">
         <SergeantPanel
           uiState={uiState}
+          missionInstructions={missionInstructions}
           dialogueLog={dialogueLog}
           punishment={punishment}
           punishmentProgress={punishmentProgress}

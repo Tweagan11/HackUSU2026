@@ -18,6 +18,11 @@ class ChallengeCode(BaseModel):
     instructions: str
 
 
+class GradeResult(BaseModel):
+    passed: bool
+    feedback: str
+
+
 def make_llm_call(model):
     """Returns an llm_call node that uses the given model."""
     def llm_call(state: dict):
@@ -72,6 +77,10 @@ def make_extract_bugs(model):
             ]
             + state["messages"]
         )
+        print(f"\n=== BUG REPORT ({len(response.bugs)} bugs) ===", flush=True)
+        for i, bug in enumerate(response.bugs, 1):
+            print(f"  [{i}] {bug.file} (line {bug.line_number}): {bug.description}", flush=True)
+            print(f"      Fix: {bug.suggested_fix}", flush=True)
         return {"bugs_found": response.bugs}
 
     return extract_bugs
@@ -105,6 +114,10 @@ def make_generate_challenge(model):
                 )
             ]
         )
+        print(f"\n=== CHALLENGE CODE ===", flush=True)
+        print(f"  Language: {response.language}", flush=True)
+        print(f"  Instructions: {response.instructions}", flush=True)
+        print(f"  Code:\n{response.code}", flush=True)
         return {"challenge": response}
 
     return generate_challenge
@@ -120,25 +133,29 @@ def wait_for_user(state: dict):
 
 def make_grade_solution(model):
     """Returns a grade_solution node that evaluates the user's submitted solution."""
+    structured_model = model.with_structured_output(GradeResult)
 
     def grade_solution(state: dict):
         """Grades the user's solution against the challenge."""
         challenge = state.get("challenge")
         user_solution = state.get("user_solution", "")
 
-        response = model.invoke(
+        response = structured_model.invoke(
             [
                 SystemMessage(
                     content=(
                         "You are a programming tutor grading a student's solution. "
                         "Given the original buggy challenge and the student's fix, "
-                        "explain whether the solution is correct and why. Be concise and encouraging."
+                        "determine whether the solution correctly fixes the bug. "
+                        "Set passed=true ONLY if the fix is correct. "
+                        "Provide concise, encouraging feedback either way."
                         f"\n\nOriginal buggy code:\n{challenge.code if challenge else 'N/A'}"
+                        f"\n\nInstructions:\n{challenge.instructions if challenge else 'N/A'}"
                         f"\n\nStudent's solution:\n{user_solution}"
                     )
                 )
             ]
         )
-        return {"grade": response.content}
+        return {"grade": response}
 
     return grade_solution
