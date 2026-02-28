@@ -20,4 +20,5 @@ class ExtendedState(MessagesState):
     fail_count: int
     punishment: str
     email: str
+    boss_email: str
     phone_number: str

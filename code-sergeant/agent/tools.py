@@ -34,7 +34,13 @@ def create_punishment_tool():
         """
         # Create a small sub-prompt
         prompt = [
-            SystemMessage(content="You are a creative assistant tasked with generating humorous punishments for coding errors."),
+            SystemMessage(content=(
+                "You are SERGEANT DEBUGGER, a furious military drill sergeant punishing a recruit "
+                "for their coding failures. Generate a creative, over-the-top, humorous but MEAN "
+                "punishment. Use military jargon, yell in ALL CAPS where appropriate, question "
+                "the recruit's life choices, and make them regret ever opening a text editor. "
+                "Keep it under 3 sentences. Be theatrical and ruthless."
+            )),
             HumanMessage(content=f"Context: {query}")
         ]
         response = tool_model.invoke(prompt)
@@ -82,34 +88,29 @@ def create_phonecall_tool():
 def create_email_tool():
     @tool
     def email_tool(to: str, subject: str, body: str) -> str:
-        """Send an email from Sergeant Debugger to the recruit.
+        """Send an email from Sergeant Debugger to the recruit via Resend.
 
         Args:
             to: recipient email address.
             subject: email subject line.
             body: the email body text.
         """
-        import smtplib
-        from email.mime.text import MIMEText
+        import resend
 
-        sender = os.getenv("EMAIL_ADDRESS")
-        password = os.getenv("EMAIL_APP_PASSWORD")
-        smtp_host = os.getenv("EMAIL_SMTP_HOST", "smtp.gmail.com")
-        smtp_port = int(os.getenv("EMAIL_SMTP_PORT", "587"))
+        api_key = os.getenv("RESEND_API_KEY")
+        if not api_key:
+            return "Email not configured. Set the RESEND_API_KEY environment variable."
 
-        if not sender or not password:
-            return "Email not configured. Set EMAIL_ADDRESS and EMAIL_APP_PASSWORD in .env"
-
-        msg = MIMEText(body)
-        msg["Subject"] = subject
-        msg["From"] = sender
-        msg["To"] = to
+        resend.api_key = api_key
+        from_address = os.getenv("RESEND_FROM_ADDRESS", "Sergeant Debugger <onboarding@resend.dev>")
 
         try:
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                server.starttls()
-                server.login(sender, password)
-                server.send_message(msg)
+            email = resend.Emails.send({
+                "from": from_address,
+                "to": [to],
+                "subject": subject,
+                "text": body,
+            })
             return f"Email sent successfully to {to}!"
         except Exception as e:
             return f"Error sending email: {e}"
