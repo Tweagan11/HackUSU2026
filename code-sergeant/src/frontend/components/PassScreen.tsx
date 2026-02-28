@@ -29,6 +29,7 @@ const PassScreen: React.FC<PassScreenProps> = ({ message, uiState, onNextMission
           onSubmit={() => {}}
           onRetry={() => {}}
           onNextMission={onNextMission}
+          canRetryAfterPunishment={true}
         />
       </div>
     </div>

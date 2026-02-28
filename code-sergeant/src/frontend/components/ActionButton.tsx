@@ -6,6 +6,7 @@ interface ActionButtonProps {
   onSubmit: () => void;
   onRetry: () => void;
   onNextMission: () => void;
+  canRetryAfterPunishment: boolean;
 }
 
 /**
@@ -22,6 +23,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   onSubmit,
   onRetry,
   onNextMission,
+  canRetryAfterPunishment,
 }) => {
   let label = '⚔ SUBMIT FIX';
   let onClick = onSubmit;
@@ -41,8 +43,11 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       disabled = true;
       break;
     case 'RESULT_FAIL':
-      label = '↻ TRY AGAIN, RECRUIT';
+      label = canRetryAfterPunishment
+        ? '↻ TRY AGAIN, RECRUIT'
+        : 'PUNISHMENT IN PROGRESS';
       onClick = onRetry;
+      disabled = !canRetryAfterPunishment;
       break;
     case 'RESULT_PASS':
       label = '★ NEXT MISSION';
