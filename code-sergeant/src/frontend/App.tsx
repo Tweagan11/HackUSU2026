@@ -23,7 +23,6 @@
 import React, { useEffect, useReducer, useState, useCallback, useRef } from 'react';
 import { appReducer, initialState } from './reducer';
 import { createMessageListener, getVSCodeApi, submitCode, triggerTimeout, callSergeant, notifyReady } from './bridge';
-import { runMockAnalyzer } from './mock';
 import {
   BOOT_DURATION_MS,
   BUG_ALERT_DURATION_MS,
@@ -130,16 +129,6 @@ const App: React.FC = () => {
   );
   const previousUiStateRef = useRef(state.uiState);
 
-  /** True when running outside VS Code webview (standalone browser dev) */
-  const isDevMode = !getVSCodeApi();
-
-  // --- Dev mode: load sample code when no backend is available ---
-  // useEffect(() => {
-  //   if (isDevMode && !state.code) {
-  //     dispatch({ type: 'CHALLENGE_LOADED', code: SAMPLE_CODE, language: 'javascript', instructions: 'Fix the null pointer bug so getUserName handles null values safely.' });
-  //   }
-  // }, [isDevMode, state.code]);
-
   // --- Boot sequence: auto-transition to IDLE after delay ---
   useEffect(() => {
     const timer = setTimeout(
@@ -207,14 +196,7 @@ const App: React.FC = () => {
     if (timeoutTriggeredRef.current) return;
     if (timeLeftSec <= 0) {
       timeoutTriggeredRef.current = true;
-      if (isDevMode) {
-        dispatch({
-          type: 'RESULT_FAIL',
-          message: 'Time expired. Sergeant initiated punishment protocol.',
-        });
-      } else {
-        triggerTimeout();
-      }
+      triggerTimeout();
       return;
     }
 
@@ -222,7 +204,7 @@ const App: React.FC = () => {
       setTimeLeftSec((prev) => Math.max(prev - 1, 0));
     }, 1000);
     return () => clearTimeout(timer);
-  }, [isDevMode, state.uiState, timeLeftSec]);
+  }, [state.uiState, timeLeftSec]);
 
   // --- Trigger visual effects on state transitions ---
   useEffect(() => {
@@ -243,12 +225,8 @@ const App: React.FC = () => {
 
   // --- Handlers ---
   const sendCodeForAnalysis = useCallback(() => {
-    if (isDevMode) {
-      runMockAnalyzer(dispatch);
-    } else {
-      submitCode(state.code);
-    }
-  }, [isDevMode, state.code]);
+    submitCode(state.code);
+  }, [state.code]);
 
   const handleSubmit = useCallback(() => {
     if (state.uiState !== 'IDLE') return;
@@ -282,20 +260,12 @@ const App: React.FC = () => {
   /** User submitted their phone number from the call overlay */
   const handleSubmitNumber = useCallback(() => {
     if (!state.phoneNumber.trim()) return;
-    if (isDevMode) {
-      // Simulate call flow in dev mode
-      dispatch({ type: 'CALL_INITIATED', callId: 'mock-call-' + Date.now() });
-      setTimeout(() => dispatch({ type: 'CALL_IN_PROGRESS' }), 1500);
-      setTimeout(() => dispatch({ type: 'CALL_ENDED' }), 8000);
-    } else {
-      // Production: send to extension host → backend POST /call/initiate
-      callSergeant(state.phoneNumber, {
-        bugType: 'unknown bug',
-        failCount: state.attemptCount,
-        lastError: state.resultMessage,
-      });
-    }
-  }, [isDevMode, state.phoneNumber, state.attemptCount, state.resultMessage]);
+    callSergeant(state.phoneNumber, {
+      bugType: 'unknown bug',
+      failCount: state.attemptCount,
+      lastError: state.resultMessage,
+    });
+  }, [state.phoneNumber, state.attemptCount, state.resultMessage]);
 
   /** Dismiss the call overlay (after call ended or on error) */
   const handleDismissCall = useCallback(() => {

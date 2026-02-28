@@ -3,6 +3,7 @@ import * as cp from 'child_process';
 import * as path from 'path';
 import * as net from 'net';
 import * as fs from 'fs';
+import WebSocket from 'ws';
 
 /* ------------------------------------------------------------------ */
 /*  Module-level state                                                 */
@@ -13,7 +14,7 @@ let currentPanel: vscode.WebviewPanel | null = null;
 let panelLockEnabled = false;
 let lastServerUrl: string | null = null;
 let lastAutoTriggerAt = 0;
-let backendPollTimer: ReturnType<typeof setInterval> | null = null;
+let backendWs: WebSocket | null = null;
 let persistedPanelState: PersistedPanelState | null = null;
 let lastChallenge: ChallengePayload | null = null;
 let challengeSendCount = 0;
@@ -199,18 +200,18 @@ async function openSergeantWorkflow(
     // Challenge will arrive asynchronously via /state polling — clear any stale one
     lastChallenge = null;
     challengeSendCount = 0;
-    console.log('[Code Sergeant] Agent running in background, challenge will arrive via polling');
+    console.log('[Code Sergeant] Agent running in background, challenge will arrive via WebSocket');
 
     // Fresh run should start from boot/training flow, not prior mission state.
     lastServerUrl = serverUrl;
-    startBackendPolling(serverUrl);
+    startBackendWebSocket(serverUrl);
   } catch (error) {
     panelLockEnabled = false;
     if (panelInitializedThisRun && currentPanel) {
       currentPanel.dispose();
     }
     workflowInFlight = false;
-    stopBackendPolling();
+    stopBackendWebSocket();
     killServer();
     lastServerUrl = null;
     const msg = error instanceof Error ? error.message : String(error);
@@ -438,7 +439,24 @@ async function startServer(
   });
 
   serverProcess.stdout?.on('data', (data: Buffer) => {
-    console.log(`[Code Sergeant server] ${data.toString().trimEnd()}`);
+    const text = data.toString().trimEnd();
+    console.log(`[Code Sergeant server] ${text}`);
+
+    // Surface ngrok URL to the user when it appears
+    const ngrokMatch = text.match(/\[ngrok\] Public URL: (\S+)/);
+    if (ngrokMatch) {
+      void vscode.window.showInformationMessage(
+        `Code Sergeant ngrok tunnel: ${ngrokMatch[1]}`
+      );
+    }
+
+    // Surface ngrok errors
+    const ngrokErr = text.match(/\[ngrok\] Could not start tunnel: (.+)/);
+    if (ngrokErr) {
+      void vscode.window.showWarningMessage(
+        `Code Sergeant: ngrok failed — ${ngrokErr[1]}`
+      );
+    }
   });
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
@@ -447,6 +465,17 @@ async function startServer(
 
   serverProcess.on('error', (err: Error) => {
     console.error('[Code Sergeant server] process error:', err);
+  });
+
+  serverProcess.on('exit', (code: number | null, signal: string | null) => {
+    console.error(
+      `[Code Sergeant server] exited (code=${code}, signal=${signal})`
+    );
+    if (code !== 0 && code !== null) {
+      void vscode.window.showErrorMessage(
+        `Code Sergeant server exited unexpectedly (code ${code}). Check Output for details.`
+      );
+    }
   });
 }
 
@@ -516,7 +545,7 @@ function createOrRevealLockedPanel(
       return;
     }
     workflowInFlight = false;
-    stopBackendPolling();
+    stopBackendWebSocket();
     killServer();
   });
 }
@@ -529,6 +558,18 @@ async function handleWebviewMessage(
   message: WebviewMessage,
   context: vscode.ExtensionContext
 ): Promise<void> {
+  // --- CLOSE_PANEL: user completed the mission and wants to exit ---
+  if (message.type === 'CLOSE_PANEL') {
+    panelLockEnabled = false;
+    workflowInFlight = false;
+    stopBackendWebSocket();
+    killServer();
+    if (currentPanel) {
+      currentPanel.dispose();
+    }
+    return;
+  }
+
   // --- SAVE_STATE ---
   if (message.type === 'SAVE_STATE') {
     const state = parsePersistedPanelState(message.payload);
@@ -792,27 +833,30 @@ function parsePersistedPanelState(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Backend real-time stream (HTTP polling — no WebSocket dependency)   */
+/*  Backend real-time stream (WebSocket — instant push updates)         */
 /* ------------------------------------------------------------------ */
 
 /**
- * Polls the backend `/state` endpoint via plain HTTP to get state updates.
- * When the challenge becomes available (agent finished in background),
- * sends CHALLENGE_LOADED to the webview.
+ * Connects to the backend `/ws` WebSocket endpoint.
+ * The server pushes state updates immediately when they happen,
+ * so there is zero polling delay.
  */
-function startBackendPolling(serverUrl: string): void {
-  stopBackendPolling();
+function startBackendWebSocket(serverUrl: string): void {
+  stopBackendWebSocket();
 
-  const pollUrl = `${serverUrl}/state`;
-  const pollIntervalMs = 2000;
+  const wsUrl = serverUrl.replace(/^http/, 'ws') + '/ws';
+  console.log(`[Code Sergeant] Connecting WebSocket to ${wsUrl}`);
 
-  backendPollTimer = setInterval(async () => {
+  const ws = new WebSocket(wsUrl);
+  backendWs = ws;
+
+  ws.on('open', () => {
+    console.log('[Code Sergeant] WebSocket connected');
+  });
+
+  ws.on('message', (data: WebSocket.Data) => {
     try {
-      const resp = await fetch(pollUrl);
-      if (!resp.ok) {
-        return;
-      }
-      const payload = (await resp.json()) as Record<string, unknown>;
+      const payload = JSON.parse(data.toString()) as Record<string, unknown>;
 
       // Detect challenge arriving from the background agent run.
       // Re-send up to MAX_CHALLENGE_SENDS times to handle cases where
@@ -822,7 +866,7 @@ function startBackendPolling(serverUrl: string): void {
         if (!lastChallenge) {
           lastChallenge = challenge;
           challengeSendCount = 0;
-          console.log('[Code Sergeant] Challenge arrived via polling:', JSON.stringify(challenge));
+          console.log('[Code Sergeant] Challenge arrived via WebSocket:', JSON.stringify(challenge));
         }
         if (challengeSendCount < MAX_CHALLENGE_SENDS) {
           challengeSendCount++;
@@ -855,15 +899,33 @@ function startBackendPolling(serverUrl: string): void {
       // Also relay as legacy update
       currentPanel?.webview.postMessage({ type: 'update', payload });
     } catch {
-      // Ignore transient network errors; the server may still be starting
+      // Ignore malformed messages
     }
-  }, pollIntervalMs);
+  });
+
+  ws.on('close', () => {
+    console.log('[Code Sergeant] WebSocket closed');
+    backendWs = null;
+  });
+
+  ws.on('error', (err: Error) => {
+    console.error('[Code Sergeant] WebSocket error:', err.message);
+    // If the connection fails, attempt a reconnect after a brief delay
+    backendWs = null;
+    if (lastServerUrl) {
+      setTimeout(() => {
+        if (lastServerUrl) {
+          startBackendWebSocket(lastServerUrl);
+        }
+      }, 2000);
+    }
+  });
 }
 
-function stopBackendPolling(): void {
-  if (backendPollTimer !== null) {
-    clearInterval(backendPollTimer);
-    backendPollTimer = null;
+function stopBackendWebSocket(): void {
+  if (backendWs) {
+    backendWs.close();
+    backendWs = null;
   }
 }
 
@@ -942,6 +1004,17 @@ async function waitForServer(
     try {
       const resp = await fetch(url);
       if (resp.ok) {
+        // Log the full health payload (includes ngrok state)
+        try {
+          const body = (await resp.json()) as Record<string, unknown>;
+          console.log('[Code Sergeant] Server healthy:', JSON.stringify(body));
+          const ngrok = body.ngrok as Record<string, unknown> | undefined;
+          if (ngrok && !ngrok.running && ngrok.error) {
+            void vscode.window.showWarningMessage(
+              `Code Sergeant: ngrok tunnel is NOT running \u2014 ${ngrok.error}`
+            );
+          }
+        } catch { /* json parse is best-effort */ }
         return;
       }
     } catch {
@@ -987,6 +1060,6 @@ export function deactivate(): void {
     currentPanel.dispose();
     currentPanel = null;
   }
-  stopBackendPolling();
+  stopBackendWebSocket();
   killServer();
 }

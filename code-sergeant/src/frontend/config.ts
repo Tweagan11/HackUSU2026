@@ -54,22 +54,16 @@ export const DIALOGUE = {
 } as const;
 
 /** Boot screen duration in milliseconds */
-export const BOOT_DURATION_MS = 1400;
+export const BOOT_DURATION_MS = 2800;
 
 /** Suspicion alert duration in milliseconds */
-export const BUG_ALERT_DURATION_MS = 1000;
+export const BUG_ALERT_DURATION_MS = 2800;
 
 /** Training splash duration in milliseconds */
-export const TRAINING_SPLASH_DURATION_MS = 1000;
-
-/** Mock analyzer delay in milliseconds */
-export const ANALYZE_MOCK_DELAY_MS = 1000;
+export const TRAINING_SPLASH_DURATION_MS = 1800;
 
 /** Mission timer duration in seconds */
 export const MISSION_TIMER_SECONDS = 90;
-
-/** Probability of pass in mock mode (0-1) */
-export const FAIL_PASS_RATIO = 0.5;
 
 /** CSS theme variables (also defined in styles.css) */
 export const CSS_VARS = {
