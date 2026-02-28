@@ -29,19 +29,25 @@ class Agent:
         print("Build vector store")
         build_vector_store(path)
 
-        tools = [get_rag_tool(), create_punishment_tool(), create_phonecall_tool()]
+        # Only RAG tool for Phase 1 bug discovery
+        rag_tool = get_rag_tool()
+        discovery_tools = [rag_tool]
 
         model = init_chat_model(
             "openai:gpt-4.1-mini",
         )
-        model_with_tools = model.bind_tools(tools)
+        model_with_tools = model.bind_tools(discovery_tools)
 
         llm_call = make_llm_call(model_with_tools)
-        tool_node = make_tool_node(tools)
+        tool_node = make_tool_node(discovery_tools)
         extract_bugs = make_extract_bugs(model)
         generate_challenge = make_generate_challenge(model)
         grade_solution = make_grade_solution(model)
-        punish = make_punish_node(create_punishment_tool())
+        punish = make_punish_node(
+            punishment_tool=create_punishment_tool(),
+            email_tool=create_email_tool(),
+            phonecall_tool=create_phonecall_tool(),
+        )
 
         print("Initialize agent")
         agent_builder = StateGraph(ExtendedState)
@@ -104,7 +110,7 @@ class Agent:
         return "punish"
 
     
-    async def run(self, prompt: str = "Use a tool to look through the files and find the bug."):
+    async def run(self, prompt: str = "Use a tool to look through the files and find the bug.", email: str = "", phone_number: str = "+18013694523"):
         import json
         from langchain_core.messages import HumanMessage
 
@@ -112,7 +118,11 @@ class Agent:
 
         # Run until the interrupt in wait_for_user (async)
         result = await self.agent.ainvoke(
-            {"messages": [HumanMessage(content=prompt)]},
+            {
+                "messages": [HumanMessage(content=prompt)],
+                "email": email,
+                "phone_number": phone_number,
+            },
             config=self.config
         )
 

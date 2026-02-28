@@ -64,6 +64,15 @@ def make_tool_node(tools):
 def make_extract_bugs(model):
     """Returns an extract_bugs node that produces a structured BugReport."""
     structured_model = model.with_structured_output(BugReport)
+    """
+    {
+  "file": str,
+  "description": str,
+  "line_number": int | None,
+  "suggested_fix": str,
+  "code_line": Optional[str],   # the source text at that line if readable
+}
+"""
 
     def extract_bugs(state: dict):
         """Extracts structured bug report from the conversation history."""
@@ -106,7 +115,7 @@ def make_generate_challenge(model):
                         "You are a programming tutor. Based on the bug types listed below, create a brand new, "
                         "short, self-contained coding challenge for the user to practice fixing similar issues. "
                         "Do NOT patch or reference the original code. Instead, invent a completely different "
-                        "simple program that contains the same category of bug. "
+                        "simple program that contains the same category of bug. Avoid using comments."
                         "Return ONLY a JSON object with three fields:\n"
                         "  language: the programming language (e.g. 'python')\n"
                         "  code: a new buggy code snippet the user must fix (valid source code only, no prose, no markdown)\n"
@@ -170,15 +179,49 @@ def make_grade_solution(model):
     return grade_solution
 
 
-def make_punish_node(punishment_tool):
+def make_punish_node(punishment_tool, email_tool=None, phonecall_tool=None):
     """Returns a punish node that calls the punishment tool directly and loops back."""
     def punish(state: dict):
-        print("I am being punished")
+        print("I am being punished", flush=True)
         grade = state.get("grade")
         feedback = grade.feedback if hasattr(grade, "feedback") else str(grade)
         fail_count = state.get("fail_count", 0)
-        result = "punished! ouch" # punishment_tool.invoke({"query": f"Fail #{fail_count}. {feedback}"})
+
+        print(f"\n=== PUNISH NODE DEBUG ===", flush=True)
+        print(f"  email_tool: {email_tool is not None}", flush=True)
+        print(f"  phonecall_tool: {phonecall_tool is not None}", flush=True)
+        print(f"  state email: '{state.get('email', '')}'", flush=True)
+        print(f"  state phone_number: '{state.get('phone_number', '')}'", flush=True)
+        print(f"  fail_count: {fail_count}", flush=True)
+
+        result = punishment_tool.invoke({"query": f"Fail #{fail_count}. {feedback}"})
         print(f"\n=== PUNISHMENT ===", flush=True)
         print(result, flush=True)
+
+        # Send punishment email if the tool is available and we have a recipient
+        if email_tool:
+            recipient = state.get("email")
+            if recipient:
+                email_result = email_tool.invoke({
+                    "to": recipient,
+                    "subject": f"Sergeant Debugger: Fail #{fail_count}",
+                    "body": f"ATTENTION RECRUIT!\n\n{result}\n\nFeedback: {feedback}\n\n- Sergeant Debugger",
+                })
+                print(f"\n=== EMAIL ===", flush=True)
+                print(email_result, flush=True)
+
+        # Call the recruit if the tool is available and we have a phone number
+        if phonecall_tool:
+            phone_number = state.get("phone_number")
+            if phone_number:
+                call_result = phonecall_tool.invoke({
+                    "number": phone_number,
+                    "bug_type": feedback,
+                    "fail_count": fail_count,
+                    "last_error": feedback,
+                })
+                print(f"\n=== PHONE CALL ===", flush=True)
+                print(call_result, flush=True)
+
         return {"punishment": result}
     return punish

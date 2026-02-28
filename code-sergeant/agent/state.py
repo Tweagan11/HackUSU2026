@@ -12,9 +12,12 @@ class MessagesState(TypedDict):
 
 class ExtendedState(MessagesState):
     bugs_found: list
+    bug_line: int
     challenge: dict
     user_solution: str
     grade: str
     passed: bool
     fail_count: int
     punishment: str
+    email: str
+    phone_number: str
