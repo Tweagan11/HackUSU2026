@@ -10,9 +10,12 @@ import uvicorn
 load_dotenv()
 
 from call_router import router as call_router
+from agent import Agent
 
 app = FastAPI()
 app.include_router(call_router)
+
+agent = None
 
 workspace_files = {}
 punishments = [
@@ -41,6 +44,10 @@ def health():
 
 @app.post("/start")
 def start(data: dict):
+    agent = Agent("../../buggy_code")
+    response = agent.run()
+    code_challenge = response.get("challenge")
+    print(code_challenge)
     global workspace_files
     workspace_files = data["files"]
     drill_state["animation"] = "ready"
