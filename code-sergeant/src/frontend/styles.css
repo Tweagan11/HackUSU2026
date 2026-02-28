@@ -163,7 +163,7 @@ body,
       #3fca90 10px,
       #3fca90 20px);
   box-shadow: 0 0 14px rgba(113, 247, 181, 0.55);
-  animation: boot-progress 1.4s steps(25, end) forwards;
+  animation: boot-progress 2.8s steps(25, end) forwards;
 }
 
 .suspicion-alert {
@@ -246,6 +246,43 @@ body,
   animation: scanner-line 1.8s linear infinite;
 }
 
+/* ── Training Splash ─────────────────────── */
+.training-splash {
+  position: absolute;
+  inset: 0;
+  z-index: 27;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(113, 247, 181, 0.18) 0%, transparent 50%),
+    linear-gradient(180deg, #080d10 0%, #060a0c 100%);
+  animation: splash-fade-in 0.5s ease-out both;
+}
+
+.training-splash__text {
+  font-size: clamp(24px, 4.5vw, 48px);
+  color: var(--px-accent);
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  text-shadow: 0 0 20px rgba(0, 255, 156, 0.5), 2px 2px 0 #000;
+  animation: splash-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes splash-fade-in {
+  from { opacity: 0; transform: scale(1.06); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes splash-pulse {
+  from { opacity: 0.7; text-shadow: 0 0 10px rgba(0, 255, 156, 0.3), 2px 2px 0 #000; }
+  to   { opacity: 1;   text-shadow: 0 0 28px rgba(0, 255, 156, 0.7), 2px 2px 0 #000; }
+}
+
+/* ── Briefing Hold ───────────────────────── */
 .briefing-hold {
   position: absolute;
   inset: 0;

@@ -13,9 +13,7 @@ import {
     BOOT_DURATION_MS,
     BUG_ALERT_DURATION_MS,
     TRAINING_SPLASH_DURATION_MS,
-    ANALYZE_MOCK_DELAY_MS,
     MISSION_TIMER_SECONDS,
-    FAIL_PASS_RATIO,
     CSS_VARS,
 } from '../frontend/config';
 
@@ -70,11 +68,6 @@ suite('Config — Timing Constants', () => {
         assert.ok(TRAINING_SPLASH_DURATION_MS > 0);
     });
 
-    test('ANALYZE_MOCK_DELAY_MS is a positive number', () => {
-        assert.ok(typeof ANALYZE_MOCK_DELAY_MS === 'number');
-        assert.ok(ANALYZE_MOCK_DELAY_MS > 0);
-    });
-
     test('MISSION_TIMER_SECONDS is a positive number', () => {
         assert.ok(typeof MISSION_TIMER_SECONDS === 'number');
         assert.ok(MISSION_TIMER_SECONDS > 0);
@@ -86,14 +79,6 @@ suite('Config — Timing Constants', () => {
         assert.ok(TRAINING_SPLASH_DURATION_MS <= 10000, 'Training splash should not take > 10s');
         assert.ok(MISSION_TIMER_SECONDS <= 600, 'Mission timer should not be > 10 min');
         assert.ok(MISSION_TIMER_SECONDS >= 10, 'Mission timer should be at least 10s');
-    });
-});
-
-suite('Config — Mock Analyzer', () => {
-    test('FAIL_PASS_RATIO is between 0 and 1', () => {
-        assert.ok(typeof FAIL_PASS_RATIO === 'number');
-        assert.ok(FAIL_PASS_RATIO >= 0);
-        assert.ok(FAIL_PASS_RATIO <= 1);
     });
 });
 

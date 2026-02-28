@@ -40,7 +40,8 @@
   "dependencies": {
     "monaco-editor": "^0.52.2",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "css-loader": "^7.1.2",
@@ -50,6 +51,7 @@
     "@types/react": "^19.1.14",
     "@types/react-dom": "^19.1.9",
     "@types/vscode": "^1.109.0",
+    "@types/ws": "^8.5.13",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.2",

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { UIState } from '../types';
 import ActionButton from './ActionButton';
+import { dismissPanel } from '../bridge';
 
 interface PassScreenProps {
   message: string;
@@ -31,6 +32,15 @@ const PassScreen: React.FC<PassScreenProps> = ({ message, uiState, onNextMission
           onNextMission={onNextMission}
           canRetryAfterPunishment={true}
         />
+        {uiState === 'MISSION_COMPLETE' && (
+          <button
+            className="action-button action-button--dismiss"
+            onClick={dismissPanel}
+            style={{ marginTop: '1rem' }}
+          >
+            🚪 FALL OUT, SOLDIER
+          </button>
+        )}
       </div>
     </div>
   );
