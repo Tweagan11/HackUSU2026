@@ -2,3 +2,9 @@ langchain
 langgraph
 langchain-core
 langchain-openai
+chromadb
+langchain-chroma
+langchain-text-splitters
+langchain-community
+ipython
+grandalf
