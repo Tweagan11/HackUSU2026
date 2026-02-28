@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { DIALOGUE } from '../config';
-import { playWarningKlaxon } from '../speechBlip';
+import { playSonarPing } from '../speechBlip';
 
 /**
  * Boot screen shown during BOOTING state.
@@ -9,10 +9,11 @@ import { playWarningKlaxon } from '../speechBlip';
  * Progress bar fills over the boot duration.
  */
 const BootScreen: React.FC = () => {
-  // Play military klaxon alarm on mount
+  // Play sonar ping on mount + every 2 seconds while booting
   useEffect(() => {
-    const cleanup = playWarningKlaxon();
-    return cleanup;
+    playSonarPing();
+    const interval = setInterval(() => playSonarPing(), 2000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
