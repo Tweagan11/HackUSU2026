@@ -6,6 +6,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from tools import get_rag_tool
 from utils import build_vector_store
+from tools import *
 from state import ExtendedState
 from langgraph.checkpoint.memory import MemorySaver
 from nodes import make_llm_call, make_tool_node, make_extract_bugs, make_generate_challenge, wait_for_user, make_grade_solution
@@ -26,13 +27,15 @@ class Agent:
         build_vector_store(path)
         tool = get_rag_tool()
 
+        tools = [get_rag_tool(), create_punishment_tool()]
+
         model = init_chat_model(
             "openai:o4-mini",
         )
-        model_with_tools = model.bind_tools([tool])
+        model_with_tools = model.bind_tools(tools)
 
         llm_call = make_llm_call(model_with_tools)
-        tool_node = make_tool_node([tool])
+        tool_node = make_tool_node(tools)
         extract_bugs = make_extract_bugs(model)
         generate_challenge = make_generate_challenge(model)
         grade_solution = make_grade_solution(model)
