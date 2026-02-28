@@ -6,6 +6,7 @@ import ActionButton from './ActionButton';
 
 interface SergeantPanelProps {
   uiState: UIState;
+  missionInstructions: string;
   dialogueLog: DialogueEntry[];
   punishment: string;
   punishmentProgress: number;
@@ -24,6 +25,7 @@ interface SergeantPanelProps {
  */
 const SergeantPanel: React.FC<SergeantPanelProps> = ({
   uiState,
+  missionInstructions,
   dialogueLog,
   punishment,
   punishmentProgress,
@@ -36,6 +38,12 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
 }) => {
   return (
     <div className="sergeant-panel">
+      {missionInstructions && (
+        <div className="sergeant-panel__instructions">
+          <span className="instructions-label">MISSION OBJECTIVE:</span>
+          <p className="instructions-text">{missionInstructions}</p>
+        </div>
+      )}
       <div className="sergeant-panel__dialogue">
         <DialogueLog entries={dialogueLog} />
       </div>

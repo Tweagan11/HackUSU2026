@@ -30,6 +30,8 @@ export type CallStatus = 'idle' | 'requested' | 'calling' | 'in-progress' | 'end
 export type AppState = {
   uiState: UIState;
   code: string;
+  challengeLanguage: string;
+  missionInstructions: string;
   dialogueLog: DialogueEntry[];
   resultMessage: string;
   punishment: string;
@@ -51,6 +53,7 @@ export type AppAction =
   | { type: 'RESULT_FAIL'; message: string; punishment?: string }
   | { type: 'RESULT_PASS'; message: string }
   | { type: 'SET_CODE'; code: string }
+  | { type: 'CHALLENGE_LOADED'; code: string; language: string; instructions: string }
   | { type: 'PUNISHMENT_LINE_COMPLETED' }
   | { type: 'RETRY' }
   | { type: 'NEXT_MISSION' }
@@ -67,6 +70,7 @@ export type ExtensionMessage =
   | { type: 'ANALYZE_START' }
   | { type: 'RESULT_FAIL'; message: string; punishment?: string }
   | { type: 'RESULT_PASS'; message: string }
+  | { type: 'CHALLENGE_LOADED'; challenge: { language: string; code: string; instructions: string } }
   | { type: 'CALL_REQUESTED' }
   | { type: 'CALL_INITIATED'; callId: string }
   | { type: 'CALL_IN_PROGRESS' }

@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getVSCodeApi = getVSCodeApi;
 exports.postMessageToExtension = postMessageToExtension;
 exports.submitCode = submitCode;
+exports.notifyReady = notifyReady;
 exports.triggerTimeout = triggerTimeout;
 exports.callSergeant = callSergeant;
 exports.createMessageListener = createMessageListener;
@@ -33,6 +34,10 @@ function postMessageToExtension(type, payload) {
 /** Send code to the extension for analysis */
 function submitCode(code) {
     postMessageToExtension('SUBMIT_CODE', { code });
+}
+/** Tell the extension the webview is ready to receive data */
+function notifyReady() {
+    postMessageToExtension('WEBVIEW_READY');
 }
 /** Trigger the mission timeout on the backend */
 function triggerTimeout() {
@@ -64,6 +69,7 @@ function createMessageListener(dispatch) {
         const message = event.data;
         if (!message || !message.type)
             return;
+        console.log('[Bridge] Received message:', message.type, message);
         switch (message.type) {
             case 'ANALYZE_START':
                 dispatch({ type: 'ANALYZE_START' });
@@ -74,6 +80,13 @@ function createMessageListener(dispatch) {
             case 'RESULT_PASS':
                 dispatch({ type: 'RESULT_PASS', message: message.message });
                 break;
+            case 'CHALLENGE_LOADED': {
+                const c = ('challenge' in message) ? message.challenge : undefined;
+                if (c) {
+                    dispatch({ type: 'CHALLENGE_LOADED', code: c.code, language: c.language, instructions: c.instructions });
+                }
+                break;
+            }
             case 'CALL_REQUESTED':
                 dispatch({ type: 'CALL_REQUESTED' });
                 break;

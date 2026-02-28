@@ -22,7 +22,7 @@
 
 import React, { useEffect, useReducer, useState, useCallback, useRef } from 'react';
 import { appReducer, initialState } from './reducer';
-import { createMessageListener, getVSCodeApi, submitCode, triggerTimeout, callSergeant } from './bridge';
+import { createMessageListener, getVSCodeApi, submitCode, triggerTimeout, callSergeant, notifyReady } from './bridge';
 import { runMockAnalyzer } from './mock';
 import {
   BOOT_DURATION_MS,
@@ -103,7 +103,7 @@ const App: React.FC = () => {
 
   const [state, dispatch] = useReducer(appReducer, {
     ...(persistedState?.appState ?? initialState),
-    code: persistedState?.appState.code ?? SAMPLE_CODE,
+    code: persistedState?.appState.code ?? '',
     punishmentProgress: persistedState?.appState.punishmentProgress ?? 0,
   });
 
@@ -120,6 +120,13 @@ const App: React.FC = () => {
 
   /** True when running outside VS Code webview (standalone browser dev) */
   const isDevMode = !getVSCodeApi();
+
+  // --- Dev mode: load sample code when no backend is available ---
+  useEffect(() => {
+    if (isDevMode && !state.code) {
+      dispatch({ type: 'CHALLENGE_LOADED', code: SAMPLE_CODE, language: 'javascript', instructions: 'Fix the null pointer bug so getUserName handles null values safely.' });
+    }
+  }, [isDevMode, state.code]);
 
   // --- Boot sequence: auto-transition to IDLE after delay ---
   useEffect(() => {
@@ -141,7 +148,12 @@ const App: React.FC = () => {
   }, [state.uiState]);
 
   // --- Listen for messages from the VS Code extension host ---
-  useEffect(() => createMessageListener(dispatch), []);
+  useEffect(() => {
+    const cleanup = createMessageListener(dispatch);
+    // Tell the extension we're ready to receive data (e.g. challenge)
+    notifyReady();
+    return cleanup;
+  }, []);
 
   // --- Persist snapshot to webview and extension host for restore after close ---
   useEffect(() => {
@@ -265,6 +277,8 @@ const App: React.FC = () => {
   // --- Derived state ---
   const mood = MOOD_MAP[state.uiState];
   const isEditorReadOnly = state.uiState !== 'IDLE';
+  // Use the language from the agent's challenge, fall back to editor language
+  const resolvedLanguage = state.challengeLanguage || editorLanguage;
 
   const rootClasses = [
     'app-root',
@@ -287,9 +301,10 @@ const App: React.FC = () => {
           <MissionLayout
             code={state.code}
             onCodeChange={handleCodeChange}
-            editorLanguage={editorLanguage}
+            editorLanguage={resolvedLanguage}
             readOnly={isEditorReadOnly}
             uiState={state.uiState}
+            missionInstructions={state.missionInstructions}
             dialogueLog={state.dialogueLog}
             punishment={state.punishment}
             punishmentProgress={state.punishmentProgress}
