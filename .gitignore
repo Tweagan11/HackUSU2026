@@ -1,3 +1,28 @@
 /venv
 .env
 .DS_Store
+
+# Build outputs
+code-sergeant/out/
+code-sergeant/dist/
+code-sergeant/media/*.webview.js
+code-sergeant/media/*.webview.js.map
+code-sergeant/media/*.webview.js.LICENSE.txt
+
+# Dependencies
+code-sergeant/node_modules/
+
+# Python
+code-sergeant/__pycache__/
+code-sergeant/*.pyc
+code-sergeant/agent/chroma_db/
+
+# Environment
+.env
+code-sergeant/node_modules/
+code-sergeant/agent/__pycache__/
+code-sergeant/agent/chroma_db/
+code-sergeant/server/__pycache__/
+
+# OS
+code-sergeant/.DS_Store

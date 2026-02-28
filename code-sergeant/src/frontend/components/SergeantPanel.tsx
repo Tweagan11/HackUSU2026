@@ -9,10 +9,13 @@ interface SergeantPanelProps {
   uiState: UIState;
   dialogueLog: DialogueEntry[];
   punishment: string;
+  punishmentProgress: number;
   showPunishment: boolean;
+  onPunishmentLineCompleted: () => void;
   onSubmit: () => void;
   onRetry: () => void;
   onNextMission: () => void;
+  canRetryAfterPunishment: boolean;
   /** Phone call props */
   callStatus: CallStatus;
   callError: string;
@@ -29,10 +32,13 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
   uiState,
   dialogueLog,
   punishment,
+  punishmentProgress,
   showPunishment,
+  onPunishmentLineCompleted,
   onSubmit,
   onRetry,
   onNextMission,
+  canRetryAfterPunishment,
   callStatus,
   callError,
   phoneNumber,
@@ -45,7 +51,12 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
         <DialogueLog entries={dialogueLog} />
       </div>
       <div className="sergeant-panel__punishment">
-        <PunishmentBox punishment={punishment} visible={showPunishment} />
+        <PunishmentBox
+          punishment={punishment}
+          visible={showPunishment}
+          progress={punishmentProgress}
+          onLineCompleted={onPunishmentLineCompleted}
+        />
       </div>
       <div className="sergeant-panel__call">
         <CallPanel
@@ -62,6 +73,7 @@ const SergeantPanel: React.FC<SergeantPanelProps> = ({
           onSubmit={onSubmit}
           onRetry={onRetry}
           onNextMission={onNextMission}
+          canRetryAfterPunishment={canRetryAfterPunishment}
         />
       </div>
     </div>
