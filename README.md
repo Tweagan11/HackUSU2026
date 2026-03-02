@@ -52,7 +52,27 @@ Final resort
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐│         VS Code Extension (TypeScript)       ││   Locked Webview <-> React + Monaco Editor    │└───────────────────┬─────────────────────────┘                    │ WebSocket + HTTP┌───────────────────▼─────────────────────────┐│          FastAPI Server (Python)              ││    /start  /submit  /timeout  /ws  /call/*   │└───────────────────┬─────────────────────────┘                    │┌───────────────────▼─────────────────────────┐│         LangGraph Agent (3-phase)            ││  Bug Discovery -> Challenge Gen -> Grading    ││  GPT-4.1-mini + ChromaDB RAG                │└───────────────────┬─────────────────────────┘                    │        ┌───────────┼───────────┐        ▼           ▼           ▼    Twilio      ElevenLabs    Resend  (phone calls)   (TTS)   (boss emails)
+┌─────────────────────────────────────────────┐
+│         VS Code Extension (TypeScript)      │
+│   Locked Webview <-> React + Monaco Editor  │
+└───────────────────┬─────────────────────────┘
+		    		│
+	   		WebSocket + HTTP
+┌───────────────────▼─────────────────────────┐
+│          FastAPI Server (Python)            │
+│    /start  /submit  /timeout  /ws  /call/*  │
+└───────────────────┬─────────────────────────┘
+	            	│
+┌───────────────────▼─────────────────────────┐
+│         LangGraph Agent (3-phase)           │
+│  Bug Discovery -> Challenge Gen -> Grading  │
+│  GPT-4.1-mini + ChromaDB RAG                │
+└───────────────────┬─────────────────────────┘
+                    │
+		┌───────────┼───────────┐
+        ▼           ▼           ▼
+   	Twilio      ElevenLabs    Resend
+  	(phone calls)   (TTS)   (boss emails)
 ```
 
 ### Extension Host (`src/extension.ts`)
