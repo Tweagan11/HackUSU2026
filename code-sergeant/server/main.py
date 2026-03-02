@@ -9,7 +9,6 @@ from fastapi import FastAPI, WebSocket, Body, BackgroundTasks
 from fastapi.websockets import WebSocketDisconnect
 import uvicorn
 import json
-from typing import Set
 
 # Load .env from the repo root (one level above code-sergeant/server/)
 _env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
@@ -23,14 +22,6 @@ app.include_router(call_router)
 
 agent = None
 agent_run_params = {}
-
-# Ngrok tunnel state — populated at startup when running via __main__
-ngrok_state: dict = {
-    "running": False,
-    "public_url": None,
-    "port": None,
-    "error": None,
-}
 
 workspace_files = {}
 punishments = [
@@ -51,45 +42,10 @@ drill_state = {
     "updatedAt": None,
 }
 
-# Event-driven WebSocket push: notify clients instantly when state changes
-state_changed: asyncio.Event = asyncio.Event()
-connected_websockets: Set[WebSocket] = set()
-
-
-async def broadcast_state():
-    """Push current drill_state to all connected WebSocket clients immediately."""
-    dead: list[WebSocket] = []
-    for ws in connected_websockets:
-        try:
-            await ws.send_json(drill_state)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        connected_websockets.discard(ws)
-
-
-def mark_state_changed():
-    """Call after every drill_state mutation to wake WebSocket listeners."""
-    state_changed.set()
-
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "port": ngrok_state["port"],
-        "ngrok": {
-            "running": ngrok_state["running"],
-            "public_url": ngrok_state["public_url"],
-            "error": ngrok_state["error"],
-        },
-    }
-
-
-@app.get("/ngrok-status")
-def ngrok_status():
-    """Quick check on ngrok tunnel health."""
-    return ngrok_state
+    return {"status": "ok"}
 
 
 @app.post("/start")
@@ -121,7 +77,6 @@ async def start(data: dict, background_tasks: BackgroundTasks):
     drill_state["message"] = "Sergeant is analyzing your code..."
     drill_state["challenge"] = None
     drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    mark_state_changed()
 
     # Run the agent in the background — challenge will appear in drill_state
     background_tasks.add_task(run_agent_background)
@@ -144,13 +99,25 @@ async def run_agent_background():
         if code_challenge:
             challenge_data = code_challenge.model_dump() if hasattr(code_challenge, 'model_dump') else code_challenge
 
+        # Include original bug locations so the extension can navigate
+        # back to the problematic line after the user completes the mission.
+        bugs_found = response.get("bugs_found", [])
+        bug_locations = []
+        for b in bugs_found:
+            loc = b.model_dump() if hasattr(b, 'model_dump') else (b if isinstance(b, dict) else {})
+            if loc.get('file'):
+                bug_locations.append({
+                    'file': loc.get('file', ''),
+                    'line_number': loc.get('line_number'),
+                    'description': loc.get('description', ''),
+                })
+
         drill_state["animation"] = "ready"
         drill_state["isComplete"] = False
         drill_state["message"] = "New drill initialized"
         drill_state["challenge"] = challenge_data
+        drill_state["bug_locations"] = bug_locations
         drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
-        mark_state_changed()
-        await broadcast_state()  # Push challenge to clients immediately
     except Exception as e:
         print(f"[background] Agent error: {e}", flush=True)
         import traceback; traceback.print_exc()
@@ -159,8 +126,6 @@ async def run_agent_background():
         drill_state["message"] = f"Agent failed: {e}"
         drill_state["challenge"] = None
         drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
-        mark_state_changed()
-        await broadcast_state()  # Push error to clients immediately
 
 
 @app.get("/state")
@@ -231,14 +196,12 @@ async def submit(data: dict):
     }
   
 @app.post("/timeout")
-async def timeout():
+def timeout():
     punishment = random.choice(punishments)
     drill_state["animation"] = "timeout"
     drill_state["isComplete"] = False
     drill_state["message"] = "Time expired. Sergeant triggered punishment."
     drill_state["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    mark_state_changed()
-    await broadcast_state()
     return {
         "ok": True,
         "message": "Time expired. Sergeant triggered punishment.",
@@ -250,19 +213,12 @@ async def timeout():
 @app.websocket("/ws")
 async def ws_updates(websocket: WebSocket):
     await websocket.accept()
-    connected_websockets.add(websocket)
     try:
-        # Send current state immediately on connect
-        await websocket.send_json(drill_state)
         while True:
-            # Wait for state to change (event-driven, no polling)
-            await state_changed.wait()
-            state_changed.clear()
             await websocket.send_json(drill_state)
+            await asyncio.sleep(1)
     except WebSocketDisconnect:
-        pass
-    finally:
-        connected_websockets.discard(websocket)
+        return
 
 
 if __name__ == "__main__":
@@ -286,20 +242,8 @@ if __name__ == "__main__":
         _cr.PUBLIC_BASE_URL = public_url
         os.environ["PUBLIC_BASE_URL"] = public_url
 
-        # Update module-level ngrok state so /health and /ngrok-status can report it
-        ngrok_state["running"] = True
-        ngrok_state["public_url"] = public_url
-        ngrok_state["port"] = port
-        ngrok_state["error"] = None
-
         print(f"[ngrok] Public URL: {public_url}", flush=True)
-        print(f"[ngrok] Forwarding to port: {port}", flush=True)
     except Exception as exc:
-        ngrok_state["running"] = False
-        ngrok_state["public_url"] = None
-        ngrok_state["port"] = port
-        ngrok_state["error"] = str(exc)
-
         print(f"[ngrok] Could not start tunnel: {exc}", flush=True)
         print("[ngrok] Falling back to PUBLIC_BASE_URL from .env (if set).", flush=True)
 
