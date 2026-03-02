@@ -735,6 +735,15 @@ body,
   justify-items: end;
 }
 
+.sergeant-face__image {
+  width: 48px;
+  height: 48px;
+  display: block;
+  image-rendering: pixelated;
+  margin: 0;
+  padding: 0;
+}
+
 .sergeant-face__frame {
   width: 142px;
   height: 96px;
