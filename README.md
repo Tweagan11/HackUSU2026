@@ -226,4 +226,3 @@ HackUSU2026/├── README.md├── buggy_code/               # Example bug
 ## License
 
 Built for HackUSU 2026.
-.
