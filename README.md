@@ -2,7 +2,7 @@
 
 > **1st Place -- Tool Development Category @ HackUSU 2026**
 
-A VS Code extension that hijacks your editor with a drill-sergeant-themed code reviewer. Code Sergeant scans your codebase for bugs, challenges you to fix them under pressure, and yells at you if you fail. Fail enough times, and it **calls you on the phone** to chew you out.
+A VS Code extension that hijacks your editor with a drill-sergeant-themed code reviewer. Code Sergeant scans your codebase for bugs, challenges you to fix them under pressure, and yells at you if you fail. Fail enough times, and it **calls you on the phone** to chew you out..
 
 Built in 24 hours at **HackUSU 2026** (February 27-28, 2026) by **Team ZDT+C**:
 
